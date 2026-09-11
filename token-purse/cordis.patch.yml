@@ -1,0 +1,10 @@
+# TokenPurse（鲸囊）安装片段。
+#
+# 把下面这段合并进 $DSH_HOME/profiles/web/cordis.patch.yml 的顶层数组即可。
+# 该行让 Loader 加载本包；本包 package.json 里的 dsh.client 声明会把它的
+# 浏览器半边登记进 window.__DSH_BOOT__ 的客户端清单。
+#
+# 前提：本包已装进该 profile（dsh plugin --profile web add file:<此目录>）。
+- insert:
+    - id: ui-token-purse
+      name: '@dsh-plugins/token-purse'

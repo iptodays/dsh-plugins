@@ -1,0 +1,1174 @@
+/**
+ * TokenPurse（鲸囊）· 浏览器半边。
+ * ---------------------------------------------------------------------------
+ * 把会话累计消耗的 token 折算成的「大致花费」徽标，插进输入框下方的会话
+ * 统计行（轮数·步数·tok/s、token·缓存命中率），与它们同行显示。
+ *
+ * 数据来自宿主推送的两个会话投影：
+ *   - tokenUsage    四个互斥计费桶（未缓存输入 / 缓存命中 / 缓存写入 / 输出）
+ *   - modelSelection 当前（或最近一次）provider/model
+ * 花费 = Σ(桶 token 数 × 每百万 token 单价) × 货币换算系数。
+ *
+ * 本文件刻意不依赖除 react 之外的任何客户端模块，因此是自包含的；
+ * scripts/build.mjs 会把它包进 DSH 客户端模块加载器外壳。
+ */
+
+const React = require("react");
+const { createPortal } = require("react-dom");
+const { useState, useEffect, useRef, useMemo, createElement: h } = React;
+
+/* ──────────────────────────────── 常量 ──────────────────────────────── */
+
+const NS = "token-purse";
+const STYLE_ID = "@dsh-plugins/token-purse/client.css";
+const STORAGE_KEY = "dsh.token-purse.config.v2";
+const STORAGE_KEY_V1 = "dsh.token-purse.config.v1";
+const LEDGER_KEY = "dsh.token-purse.ledger.v1";
+/* v1 里 deepseek-flash 是官方示例价；迁移时只有仍等于旧值的条目才换成新默认价。 */
+const LEGACY_FLASH_V1 = { input: 0.28, cacheRead: 0.028, output: 0.42 };
+
+/* 兜底费率：美元 / 百万 token。cacheRead/cacheWrite 缺省时按 input 计。 */
+const FALLBACK_RATES = { input: 0.28, cacheRead: 0.028, cacheWrite: 0.28, output: 0.42, peakMultiplier: 1 };
+
+/* 费率表（美元 / 百万 token）。peakMultiplier > 1 表示在 peak.windows 时段内单价乘该系数。 */
+const DEFAULT_MODELS = {
+  /*
+   * 同一个 model id 在不同 provider 价格不同，所以 key 支持 "provider/model"。
+   * 匹配顺序：provider/model 精确 → model 精确 → model 子串（取最长）→ 兜底。
+   */
+  /* packyapi deepseek-flash：低峰 $0.80 / $3.20 / 缓存读取 $0.016，高峰（工作日两段）翻倍。 */
+  "packyapi/deepseek-flash": { input: 0.8, cacheRead: 0.016, cacheWrite: 0.8, output: 3.2, peakMultiplier: 2 },
+  /* 下面是「只有模型名」的官方/示例价，仅当没有 provider 专属条目时兜底。 */
+  "deepseek-chat": { input: 0.28, cacheRead: 0.028, cacheWrite: 0.28, output: 0.42 },
+  "deepseek-reasoner": { input: 0.55, cacheRead: 0.14, cacheWrite: 0.55, output: 2.19 },
+  "deepseek-v3": { input: 0.27, cacheRead: 0.07, cacheWrite: 0.27, output: 1.1 },
+  "deepseek-v3.1": { input: 0.28, cacheRead: 0.028, cacheWrite: 0.28, output: 0.42 },
+  "deepseek-v3.2": { input: 0.28, cacheRead: 0.028, cacheWrite: 0.28, output: 0.42 },
+  "deepseek-v4-pro": { input: 0.55, cacheRead: 0.14, cacheWrite: 0.55, output: 2.19 },
+  "deepseek-v4-flash": { input: 0.28, cacheRead: 0.028, cacheWrite: 0.28, output: 0.42 }
+};
+
+/* 分时时段：工作日 Asia/Shanghai 09:00–12:00、14:00–18:00（半开区间）。 */
+const DEFAULT_PEAK = {
+  timezone: "Asia/Shanghai",
+  windows: ["Mon-Fri 09:00-12:00", "Mon-Fri 14:00-18:00"]
+};
+
+const DEFAULT_CONFIG = { currency: { code: "USD", symbol: "$", perUsd: 1, auto: false }, peak: DEFAULT_PEAK, models: DEFAULT_MODELS };
+
+const FX_TIME_KEY = "dsh.token-purse.fx.v1";
+const FX_TTL_MS = 12 * 60 * 60 * 1000;
+/* 汇率来源（均免费、免 key、带 CORS）；按顺序尝试，失败换下一个。 */
+const FX_ENDPOINTS = [
+  { url: "https://open.er-api.com/v6/latest/USD", source: "open.er-api.com", table: "rates" },
+  { url: "https://latest.currency-api.pages.dev/v1/currencies/usd.json", source: "currency-api.pages.dev", table: "usd" }
+];
+
+/* 常用币种预设：perUsd = 1 美元折合多少该币种。汇率为示例值，可在面板里改。 */
+const CURRENCY_PRESETS = [
+  { code: "USD", symbol: "$", perUsd: 1 },
+  { code: "CNY", symbol: "¥", perUsd: 7.2 },
+  { code: "EUR", symbol: "€", perUsd: 0.92 },
+  { code: "GBP", symbol: "£", perUsd: 0.79 },
+  { code: "JPY", symbol: "¥", perUsd: 150 },
+  { code: "HKD", symbol: "HK$", perUsd: 7.8 },
+  { code: "TWD", symbol: "NT$", perUsd: 32 },
+  { code: "KRW", symbol: "₩", perUsd: 1380 },
+  { code: "SGD", symbol: "S$", perUsd: 1.35 },
+  { code: "INR", symbol: "₹", perUsd: 84 }
+];
+
+function matchCurrencyPreset(symbol, perUsd) {
+  for (const preset of CURRENCY_PRESETS) {
+    if (preset.symbol === symbol && Math.abs(preset.perUsd - perUsd) < 1e-9) return preset;
+  }
+  return null;
+}
+
+function findCurrencyPreset(code, symbol) {
+  for (const preset of CURRENCY_PRESETS) {
+    if (preset.code === code && preset.symbol === symbol) return preset;
+  }
+  return null;
+}
+
+function readFxTime() {
+  try {
+    const value = Number(window.localStorage.getItem(FX_TIME_KEY));
+    return Number.isFinite(value) ? value : 0;
+  } catch (error) {
+    return 0;
+  }
+}
+
+function writeFxTime(at) {
+  try {
+    window.localStorage.setItem(FX_TIME_KEY, String(at));
+  } catch (error) {
+    /* 忽略：大不了下次重新取。 */
+  }
+}
+
+/**
+ * 从公开接口取「1 美元 = ? 目标币种」。全部失败返回 null。
+ * @param code - 三位币种代码，如 CNY。
+ * @returns 成功 { rate, source }，失败 null。
+ */
+async function fetchUsdRate(code) {
+  if (typeof fetch !== "function" || typeof code !== "string" || code.length === 0) return null;
+  const target = code.toUpperCase();
+  for (const endpoint of FX_ENDPOINTS) {
+    try {
+      const response = await fetch(endpoint.url, { cache: "no-store" });
+      if (!response.ok) continue;
+      const payload = await response.json();
+      const table = payload === null || typeof payload !== "object" ? null : payload[endpoint.table];
+      if (table === null || typeof table !== "object") continue;
+      const raw = table[target] !== undefined ? table[target] : table[target.toLowerCase()];
+      const value = typeof raw === "string" ? Number(raw) : raw;
+      if (typeof value === "number" && Number.isFinite(value) && value > 0) return { rate: value, source: endpoint.source };
+    } catch (error) {
+      /* 换下一个接口 */
+    }
+  }
+  return null;
+}
+
+/* ──────────────────────────────── 样式 ──────────────────────────────── */
+
+const CSS_TEXT =
+  ".TPurse_root{position:relative;display:inline-flex;align-items:center}" +
+  ".TPurse_trigger{display:inline-flex;align-items:center;gap:3px;height:28px;padding:0 8px;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;cursor:pointer;font-variant-numeric:tabular-nums}" +
+  ".TPurse_trigger:hover,.TPurse_trigger:focus-visible{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}" +
+  ".TPurse_approx{opacity:.75}" +
+  ".TPurse_amount{font-weight:500;color:var(--dsw-alias-label-secondary)}" +
+  ".TPurse_chevron{font-size:9px;opacity:.6;transition:transform .12s}" +
+  ".TPurse_chevronOpen{transform:rotate(180deg)}" +
+  ".TPurse_panel{position:absolute;bottom:calc(100% + 8px);top:auto;right:0;z-index:100;box-sizing:border-box;width:min(320px,calc(100vw - 32px));padding:12px;border:0;border-radius:12px;background:var(--dsw-specific-menu);box-shadow:var(--dsw-elevation-prominent);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:20px;cursor:default}" +
+  ".TPurse_head{display:flex;align-items:baseline;gap:8px}" +
+  ".TPurse_title{color:var(--dsw-alias-label-tertiary)}" +
+  ".TPurse_total{margin-left:auto;color:var(--dsw-alias-label-primary);font-weight:600;font-variant-numeric:tabular-nums}" +
+  ".TPurse_modelLine{display:flex;align-items:baseline;gap:8px;margin-top:2px;color:var(--dsw-alias-label-tertiary)}" +
+  ".TPurse_modelValue{margin-left:auto;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary);font-family:var(--dsw-font-mono);font-size:11px}" +
+  ".TPurse_rows{margin:10px 0 0;padding:8px 0 0;border-top:1px solid var(--dsw-alias-border-l1)}" +
+  ".TPurse_row{display:flex;align-items:center;gap:12px;padding:3px 0}" +
+  ".TPurse_row dt{color:var(--dsw-alias-label-secondary)}" +
+  ".TPurse_row dd{display:flex;gap:10px;margin:0 0 0 auto;font-variant-numeric:tabular-nums}" +
+  ".TPurse_rowTotal dt{color:var(--dsw-alias-label-tertiary)}" +
+  ".TPurse_tokens{min-width:52px;text-align:right;color:var(--dsw-alias-label-tertiary)}" +
+  ".TPurse_sub{min-width:68px;text-align:right;color:var(--dsw-alias-label-primary)}" +
+  ".TPurse_note{margin-top:10px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px}" +
+  ".TPurse_editButton{margin-top:8px;padding:0;border:0;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:11px;cursor:pointer}" +
+  ".TPurse_editButton:hover{color:var(--dsw-alias-label-secondary)}" +
+  ".TPurse_editor{margin-top:8px}" +
+  ".TPurse_textarea{box-sizing:border-box;width:100%;height:148px;padding:6px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-fill-l2,transparent);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-mono);font-size:11px;line-height:16px;resize:vertical}" +
+  ".TPurse_hint{margin-top:4px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px}" +
+  ".TPurse_error{margin-top:4px;color:var(--dsw-static-red-500,var(--dsw-alias-label-primary));font-size:11px}" +
+  ".TPurse_actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}" +
+  ".TPurse_ghost,.TPurse_primary{padding:4px 10px;border:0;border-radius:8px;font-size:11px;cursor:pointer}" +
+  ".TPurse_ghost{background:transparent;color:var(--dsw-alias-label-secondary)}" +
+  ".TPurse_ghost:hover{background:var(--dsw-alias-interactive-bg-hover)}" +
+  ".TPurse_primary{background:var(--dsw-alias-label-primary);color:var(--dsw-specific-menu)}" +
+  ".TPurse_host{display:none}" +
+  "[data-composer-stats] .TPurse_root{font:inherit}" +
+  "[data-composer-stats] .TPurse_trigger{height:auto;padding:1px 8px;gap:6px;border-radius:24px;font:inherit;line-height:inherit}" +
+  "[data-composer-stats] .TPurse_amount{font-weight:400}" +
+  ".TPurse_fields{display:grid;grid-template-columns:max-content minmax(0,1fr);align-items:center;gap:6px 10px;margin-top:12px;padding-top:10px;border-top:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-tertiary);font-size:11px}" +
+  ".TPurse_fieldLabel{white-space:nowrap}" +
+  ".TPurse_select,.TPurse_rateInput{font:inherit;font-size:11px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-fill-l2,transparent);border:1px solid var(--dsw-alias-border-l1);border-radius:6px;padding:2px 5px}" +
+  ".TPurse_select{width:100%;max-width:160px;min-width:0}" +
+  ".TPurse_rateInput{width:76px;text-align:right;font-family:var(--dsw-font-mono);font-variant-numeric:tabular-nums}" +
+  ".TPurse_fxRow{display:flex;align-items:center;gap:10px;margin-top:8px;color:var(--dsw-alias-label-tertiary);font-size:11px}" +
+  ".TPurse_fxButton{padding:2px 8px;border:1px solid var(--dsw-alias-border-l1);border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;cursor:pointer}" +
+  ".TPurse_fxButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}" +
+  ".TPurse_fxButton:disabled{opacity:.5;cursor:default}" +
+  ".TPurse_fxAuto{display:inline-flex;align-items:center;gap:4px;cursor:pointer}" +
+  ".TPurse_fxNote{margin-top:5px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;word-break:break-word}" +
+  ".TPurse_peakNote{display:flex;align-items:flex-start;gap:6px;margin-top:10px;padding-top:8px;border-top:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px}" +
+  ".TPurse_peakChip{flex:none;padding:1px 6px;border-radius:999px;background:var(--dsw-alias-fill-l2,transparent);color:var(--dsw-alias-label-secondary)}" +
+  ".TPurse_peakChipOn{background:var(--dsw-static-yellow-500,var(--dsw-alias-fill-l2,transparent));color:var(--dsw-alias-label-primary)}" +
+  ".TPurse_peakText{min-width:0;word-break:break-word}" +
+  ".TPurse_warnNote{margin-top:6px;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px;word-break:break-word}" +
+  ".TPurse_sourceChip{flex:none;padding:0 6px;border-radius:999px;background:var(--dsw-alias-fill-l2,transparent);color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:15px}" +
+  ".TPurse_sourceChipExact{color:var(--dsw-alias-label-secondary)}" +
+  ".TPurse_sourceChipMiss{color:var(--dsw-alias-label-primary)}";
+
+const CSS = {
+  root: "TPurse_root",
+  trigger: "TPurse_trigger",
+  approx: "TPurse_approx",
+  amount: "TPurse_amount",
+  chevron: "TPurse_chevron",
+  chevronOpen: "TPurse_chevronOpen",
+  panel: "TPurse_panel",
+  head: "TPurse_head",
+  title: "TPurse_title",
+  total: "TPurse_total",
+  modelLine: "TPurse_modelLine",
+  modelValue: "TPurse_modelValue",
+  rows: "TPurse_rows",
+  row: "TPurse_row",
+  rowTotal: "TPurse_rowTotal",
+  tokens: "TPurse_tokens",
+  sub: "TPurse_sub",
+  note: "TPurse_note",
+  editButton: "TPurse_editButton",
+  editor: "TPurse_editor",
+  textarea: "TPurse_textarea",
+  hint: "TPurse_hint",
+  error: "TPurse_error",
+  actions: "TPurse_actions",
+  ghost: "TPurse_ghost",
+  primary: "TPurse_primary",
+  host: "TPurse_host",
+  fields: "TPurse_fields",
+  fieldLabel: "TPurse_fieldLabel",
+  select: "TPurse_select",
+  rateInput: "TPurse_rateInput",
+  fxRow: "TPurse_fxRow",
+  fxButton: "TPurse_fxButton",
+  fxAuto: "TPurse_fxAuto",
+  fxNote: "TPurse_fxNote",
+  peakNote: "TPurse_peakNote",
+  peakChip: "TPurse_peakChip",
+  peakChipOn: "TPurse_peakChipOn",
+  peakText: "TPurse_peakText",
+  warnNote: "TPurse_warnNote",
+  sourceChip: "TPurse_sourceChip",
+  sourceChipExact: "TPurse_sourceChipExact",
+  sourceChipMiss: "TPurse_sourceChipMiss"
+};
+
+if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(STYLE_ID) + "]") === null) {
+  const styleTag = document.createElement("style");
+  styleTag.dataset.plugin = "@dsh-plugins/token-purse";
+  styleTag.dataset.pluginCss = STYLE_ID;
+  styleTag.textContent = CSS_TEXT;
+  document.head.appendChild(styleTag);
+}
+
+/* ──────────────────────────────── 配置 ──────────────────────────────── */
+
+function toNumber(value, fallback) {
+  const numeric = typeof value === "string" && value.trim() !== "" ? Number(value) : value;
+  return typeof numeric === "number" && Number.isFinite(numeric) && numeric >= 0 ? numeric : fallback;
+}
+
+function normalizeRates(raw) {
+  const source = raw !== null && raw !== undefined && typeof raw === "object" ? raw : {};
+  const input = toNumber(source.input, FALLBACK_RATES.input);
+  const peakMultiplier = toNumber(source.peakMultiplier, 1);
+  return {
+    input,
+    cacheRead: toNumber(source.cacheRead, input),
+    cacheWrite: toNumber(source.cacheWrite, input),
+    output: toNumber(source.output, FALLBACK_RATES.output),
+    peakMultiplier: peakMultiplier > 1 ? peakMultiplier : 1
+  };
+}
+
+function normalizePeak(raw) {
+  const source = raw !== null && raw !== undefined && typeof raw === "object" ? raw : {};
+  const timezone =
+    typeof source.timezone === "string" && source.timezone.length > 0 && source.timezone.length <= 64
+      ? source.timezone
+      : DEFAULT_PEAK.timezone;
+  const windows = Array.isArray(source.windows)
+    ? source.windows.filter((item) => typeof item === "string" && item.length > 0 && item.length <= 64)
+    : DEFAULT_PEAK.windows.slice();
+  return { timezone, windows };
+}
+
+function cloneConfig(config) {
+  const models = {};
+  for (const key of Object.keys(config.models)) models[key] = normalizeRates(config.models[key]);
+  return {
+    currency: {
+      code: typeof config.currency.code === "string" ? config.currency.code : "",
+      symbol: config.currency.symbol,
+      perUsd: config.currency.perUsd,
+      auto: config.currency.auto === true
+    },
+    peak: normalizePeak(config.peak),
+    models
+  };
+}
+
+function mergeConfig(base, patch) {
+  const merged = cloneConfig(base);
+  if (patch === null || patch === undefined || typeof patch !== "object") return merged;
+  const currency = patch.currency;
+  if (currency !== null && currency !== undefined && typeof currency === "object") {
+    if (typeof currency.symbol === "string" && currency.symbol.length > 0 && currency.symbol.length <= 4) merged.currency.symbol = currency.symbol;
+    const perUsd = toNumber(currency.perUsd, null);
+    if (perUsd !== null && perUsd > 0) merged.currency.perUsd = perUsd;
+    if (typeof currency.code === "string" && currency.code.length > 0 && currency.code.length <= 8) {
+      merged.currency.code = currency.code.toUpperCase();
+    } else {
+      const inferred = matchCurrencyPreset(merged.currency.symbol, merged.currency.perUsd);
+      if (inferred !== null) merged.currency.code = inferred.code;
+    }
+    if (typeof currency.auto === "boolean") merged.currency.auto = currency.auto;
+  }
+  const peak = patch.peak;
+  if (peak !== null && peak !== undefined && typeof peak === "object") {
+    if (typeof peak.timezone === "string" && peak.timezone.length > 0 && peak.timezone.length <= 64) merged.peak.timezone = peak.timezone;
+    if (Array.isArray(peak.windows)) {
+      merged.peak.windows = peak.windows.filter((item) => typeof item === "string" && item.length > 0 && item.length <= 64);
+    }
+  }
+  const models = patch.models;
+  if (models !== null && models !== undefined && typeof models === "object" && !Array.isArray(models)) {
+    for (const rawKey of Object.keys(models)) {
+      const key = rawKey.toLowerCase();
+      if (key.length === 0 || key.length > 64) continue;
+      if (key === "__proto__" || key === "prototype" || key === "constructor") continue;
+      merged.models[key] = normalizeRates(models[rawKey]);
+    }
+  }
+  return merged;
+}
+
+/* 迁移旧配置：只把仍是 v1 示例价的 deepseek-flash 换掉，用户自己改过的费率原样保留。 */
+function migrateConfigV1(parsed) {
+  if (parsed === null || parsed === undefined || typeof parsed !== "object") return parsed;
+  const models = parsed.models;
+  if (models !== null && models !== undefined && typeof models === "object" && !Array.isArray(models)) {
+    const flash = models["deepseek-flash"];
+    if (
+      flash !== null && flash !== undefined && typeof flash === "object"
+      && toNumber(flash.input, null) === LEGACY_FLASH_V1.input
+      && toNumber(flash.cacheRead, null) === LEGACY_FLASH_V1.cacheRead
+      && toNumber(flash.output, null) === LEGACY_FLASH_V1.output
+    ) {
+      delete models["deepseek-flash"];
+    }
+  }
+  return parsed;
+}
+
+function readConfig() {
+  const base = cloneConfig(DEFAULT_CONFIG);
+  try {
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    if (stored !== null && stored !== undefined) return mergeConfig(base, JSON.parse(stored));
+    const legacy = window.localStorage.getItem(STORAGE_KEY_V1);
+    if (legacy !== null && legacy !== undefined) {
+      const migrated = mergeConfig(base, migrateConfigV1(JSON.parse(legacy)));
+      writeConfig(migrated);
+      return migrated;
+    }
+    return base;
+  } catch (error) {
+    return base;
+  }
+}
+
+function writeConfig(config) {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+  } catch (error) {
+    /* 无痕模式等写入失败时保留内存态即可。 */
+  }
+}
+
+/** 命中哪一条费率：provider 专属 / 同名模型 / 子串 / 兜底。 */
+function lookupRates(config, modelId, provider) {
+  const models =
+    config !== null && config !== undefined && config.models !== null && typeof config.models === "object" ? config.models : {};
+  const has = (key) => Object.prototype.hasOwnProperty.call(models, key);
+  const id = typeof modelId === "string" && modelId.length > 0 ? modelId.toLowerCase() : null;
+  const owner = typeof provider === "string" && provider.length > 0 ? provider.toLowerCase() : null;
+  if (id !== null) {
+    if (owner !== null && has(owner + "/" + id)) return { rates: normalizeRates(models[owner + "/" + id]), source: "provider" };
+    if (has(id)) return { rates: normalizeRates(models[id]), source: "model" };
+    let best = null;
+    for (const key of Object.keys(models)) {
+      if (key.indexOf("/") !== -1) continue;
+      if (id.indexOf(key) !== -1 && (best === null || key.length > best.length)) best = key;
+    }
+    if (best !== null) return { rates: normalizeRates(models[best]), source: "substring" };
+  }
+  return { rates: normalizeRates(FALLBACK_RATES), source: "fallback" };
+}
+
+function resolveRates(config, modelId, provider) {
+  return lookupRates(config, modelId, provider).rates;
+}
+
+function rateSource(config, modelId, provider) {
+  return lookupRates(config, modelId, provider).source;
+}
+
+function pickModel(selection) {
+  if (selection === null || selection === undefined || typeof selection !== "object") return null;
+  const candidates = [selection.next, selection.lastUsed];
+  for (const candidate of candidates) {
+    if (candidate !== null && candidate !== undefined && typeof candidate === "object" && typeof candidate.model === "string" && candidate.model.length > 0) return candidate;
+  }
+  return null;
+}
+
+/* ─────────────────────────── 分时、账本与计费 ─────────────────────────── */
+
+const BUCKETS = ["uncachedInputTokens", "cacheReadTokens", "cacheWriteTokens", "outputTokens"];
+const BUCKET_DEFINITIONS = [
+  { key: "uncachedInputTokens", label: "bucket.input", rate: "input" },
+  { key: "cacheReadTokens", label: "bucket.cacheRead", rate: "cacheRead" },
+  { key: "cacheWriteTokens", label: "bucket.cacheWrite", rate: "cacheWrite" },
+  { key: "outputTokens", label: "bucket.output", rate: "output" }
+];
+const LEDGER_LIMIT = 1000;
+
+const WEEKDAYS = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+
+function zeroBuckets() {
+  return { uncachedInputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
+}
+
+function bucketSnapshot(usage) {
+  const buckets = zeroBuckets();
+  if (usage === null || usage === undefined || typeof usage !== "object") return buckets;
+  for (const key of BUCKETS) buckets[key] = toNumber(usage[key], 0);
+  return buckets;
+}
+
+function totalOf(buckets) {
+  let total = 0;
+  for (const key of BUCKETS) total += buckets[key];
+  return total;
+}
+
+function parseDays(text) {
+  const days = new Set();
+  for (const rawPart of String(text).split(",")) {
+    const part = rawPart.trim().toLowerCase();
+    if (part === "*") {
+      for (let day = 0; day < 7; day += 1) days.add(day);
+      continue;
+    }
+    const range = part.split("-");
+    if (range.length === 2) {
+      const from = WEEKDAYS[range[0].trim().slice(0, 3)];
+      const to = WEEKDAYS[range[1].trim().slice(0, 3)];
+      if (from === undefined || to === undefined) return null;
+      for (let day = from; ; day = (day + 1) % 7) {
+        days.add(day);
+        if (day === to) break;
+      }
+    } else {
+      const day = WEEKDAYS[part.slice(0, 3)];
+      if (day === undefined) return null;
+      days.add(day);
+    }
+  }
+  return days.size > 0 ? days : null;
+}
+
+function parseClock(text) {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(String(text).trim());
+  if (match === null) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 24 || minutes > 59) return null;
+  const total = hours * 60 + minutes;
+  return total <= 1440 ? total : null;
+}
+
+/** 解析 "Mon-Fri 09:00-12:00" 这样的时段；无法解析返回 null。 */
+function parsePeakWindow(text) {
+  const match = /^(.*?)\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/.exec(String(text).trim());
+  if (match === null) return null;
+  const days = parseDays(match[1]);
+  const from = parseClock(match[2]);
+  const to = parseClock(match[3]);
+  if (days === null || from === null || to === null || from >= to) return null;
+  return { days, from, to };
+}
+
+function parsePeak(config) {
+  const source = config !== null && config !== undefined && typeof config.peak === "object" ? config.peak : null;
+  if (source === null || source === undefined || !Array.isArray(source.windows)) return null;
+  const windows = [];
+  for (const text of source.windows) {
+    const parsed = typeof text === "string" ? parsePeakWindow(text) : null;
+    if (parsed !== null) windows.push(parsed);
+  }
+  if (windows.length === 0) return null;
+  const timezone = typeof source.timezone === "string" && source.timezone.length > 0 ? source.timezone : "UTC";
+  return { timezone, windows };
+}
+
+const DAY_FORMATTERS = new Map();
+
+function zonedDayMinutes(date, timeZone) {
+  let formatter = DAY_FORMATTERS.get(timeZone);
+  if (formatter === undefined) {
+    try {
+      formatter = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false });
+    } catch (error) {
+      formatter = null;
+    }
+    DAY_FORMATTERS.set(timeZone, formatter);
+  }
+  if (formatter === null) return null;
+  try {
+    let weekday = null;
+    let hours = null;
+    let minutes = null;
+    for (const part of formatter.formatToParts(date)) {
+      if (part.type === "weekday") weekday = part.value;
+      else if (part.type === "hour") hours = part.value;
+      else if (part.type === "minute") minutes = part.value;
+    }
+    const day = weekday === null ? undefined : WEEKDAYS[String(weekday).toLowerCase().slice(0, 3)];
+    if (day === undefined || hours === null || minutes === null) return null;
+    const hour = Number(hours) === 24 ? 0 : Number(hours);
+    return { day, minutes: hour * 60 + Number(minutes) };
+  } catch (error) {
+    return null;
+  }
+}
+
+function isPeakAt(date, peak) {
+  if (peak === null) return false;
+  const zoned = zonedDayMinutes(date, peak.timezone);
+  if (zoned === null) return false;
+  for (const window of peak.windows) {
+    if (window.days.has(zoned.day) && zoned.minutes >= window.from && zoned.minutes < window.to) return true;
+  }
+  return false;
+}
+
+/** 某模型在 at 时刻生效的单价（高峰时段按 peakMultiplier 上浮）。 */
+function ratesAt(config, modelId, at, peak, provider) {
+  const rates = resolveRates(config, modelId, provider);
+  if (peak === null || !(rates.peakMultiplier > 1)) return rates;
+  if (!isPeakAt(new Date(at), peak)) return rates;
+  const factor = rates.peakMultiplier;
+  return {
+    input: rates.input * factor,
+    cacheRead: rates.cacheRead * factor,
+    cacheWrite: rates.cacheWrite * factor,
+    output: rates.output * factor,
+    peakMultiplier: factor
+  };
+}
+
+/* ── 增量账本：会话投影只给累计值，这里按观察时刻切成增量、逐段计价 ── */
+
+function emptyLedger() {
+  return { observed: false, seen: zeroBuckets(), base: null, entries: [] };
+}
+
+function normalizeLedger(raw) {
+  const ledger = emptyLedger();
+  if (raw === null || raw === undefined || typeof raw !== "object") return ledger;
+  ledger.observed = raw.observed === true;
+  if (raw.seen !== null && raw.seen !== undefined && typeof raw.seen === "object") ledger.seen = bucketSnapshot(raw.seen);
+  if (raw.base !== null && raw.base !== undefined && typeof raw.base === "object" && typeof raw.base.at === "number") {
+    ledger.base = { at: raw.base.at, provider: typeof raw.base.provider === "string" ? raw.base.provider : null, model: typeof raw.base.model === "string" ? raw.base.model : null, b: bucketSnapshot(raw.base.b) };
+    ledger.observed = true;
+  }
+  if (Array.isArray(raw.entries)) {
+    for (const entry of raw.entries) {
+      if (entry === null || entry === undefined || typeof entry !== "object" || typeof entry.at !== "number") continue;
+      ledger.entries.push({ at: entry.at, provider: typeof entry.provider === "string" ? entry.provider : null, model: typeof entry.model === "string" ? entry.model : null, b: bucketSnapshot(entry.b) });
+    }
+    if (ledger.entries.length > 0) ledger.observed = true;
+  }
+  return ledger;
+}
+
+function ledgerKey(sessionId) {
+  return LEDGER_KEY + ":" + String(sessionId === undefined || sessionId === null ? "default" : sessionId);
+}
+
+function readLedger(sessionId) {
+  try {
+    const raw = window.localStorage.getItem(ledgerKey(sessionId));
+    if (raw === null || raw === undefined) return emptyLedger();
+    return normalizeLedger(JSON.parse(raw));
+  } catch (error) {
+    return emptyLedger();
+  }
+}
+
+function writeLedger(sessionId, ledger) {
+  try {
+    window.localStorage.setItem(ledgerKey(sessionId), JSON.stringify(ledger));
+  } catch (error) {
+    /* 忽略：写不进去只影响刷新后的精度。 */
+  }
+}
+
+/** 用最新累计值推进账本；无变化时原样返回，避免多余渲染。 */
+function syncLedger(current, usage, providerId, modelId, now) {
+  const ledger = current === null || current === undefined ? emptyLedger() : current;
+  const next = bucketSnapshot(usage);
+  let reset = false;
+  for (const key of BUCKETS) if (next[key] < ledger.seen[key]) reset = true;
+  if (reset) {
+    return { observed: true, seen: next, base: totalOf(next) > 0 ? { at: now, provider: providerId, model: modelId, b: next } : null, entries: [] };
+  }
+  if (ledger.observed !== true) {
+    return { observed: true, seen: next, base: totalOf(next) > 0 ? { at: now, provider: providerId, model: modelId, b: next } : null, entries: [] };
+  }
+  const delta = zeroBuckets();
+  let changed = false;
+  for (const key of BUCKETS) {
+    const value = next[key] - ledger.seen[key];
+    if (value > 0) {
+      delta[key] = value;
+      changed = true;
+    }
+  }
+  if (!changed) return ledger;
+  const entries = ledger.entries.concat([{ at: now, provider: providerId, model: modelId, b: delta }]);
+  return {
+    observed: true,
+    seen: next,
+    base: ledger.base,
+    entries: entries.length > LEDGER_LIMIT ? entries.slice(entries.length - LEDGER_LIMIT) : entries
+  };
+}
+
+/* ── 计费 ── */
+
+function costBuckets(buckets, rates) {
+  const usd = zeroBuckets();
+  for (const definition of BUCKET_DEFINITIONS) usd[definition.key] = (buckets[definition.key] * rates[definition.rate]) / 1e6;
+  return usd;
+}
+
+function usdBreakdown(totals, selection, config, ledger, at) {
+  const model = pickModel(selection);
+  const modelId = model === null ? null : model.model;
+  const providerId = model === null || typeof model.provider !== "string" || model.provider.length === 0 ? null : model.provider;
+  const peak = parsePeak(config);
+  const usd = zeroBuckets();
+  const accumulate = (buckets, entryProvider, entryModel, moment) => {
+    const rates = ratesAt(config, entryModel === null ? modelId : entryModel, moment, peak, entryProvider === null || entryProvider === undefined ? providerId : entryProvider);
+    const cost = costBuckets(buckets, rates);
+    for (const key of BUCKETS) usd[key] += cost[key];
+  };
+  if (ledger !== null && ledger !== undefined) {
+    if (ledger.base !== null) accumulate(ledger.base.b, ledger.base.provider, ledger.base.model, ledger.base.at);
+    for (const entry of ledger.entries) accumulate(entry.b, entry.provider, entry.model, entry.at);
+    const covered = zeroBuckets();
+    if (ledger.base !== null) for (const key of BUCKETS) covered[key] += ledger.base.b[key];
+    for (const entry of ledger.entries) for (const key of BUCKETS) covered[key] += entry.b[key];
+    const remainder = zeroBuckets();
+    let hasRemainder = false;
+    for (const key of BUCKETS) {
+      const value = totals[key] - covered[key];
+      if (value > 0) {
+        remainder[key] = value;
+        hasRemainder = true;
+      }
+    }
+    if (hasRemainder) accumulate(remainder, providerId, modelId, at);
+  } else {
+    accumulate(totals, providerId, modelId, at);
+  }
+  const rates = resolveRates(config, modelId, providerId);
+  const active = peak !== null && rates.peakMultiplier > 1 && isPeakAt(new Date(at), peak);
+  return {
+    usd,
+    source: rateSource(config, modelId, providerId),
+    peak:
+      peak === null || rates.peakMultiplier <= 1
+        ? null
+        : { active, multiplier: rates.peakMultiplier, timezone: peak.timezone, windows: config.peak.windows }
+  };
+}
+
+function rateUsage(usage, selection, config, at) {
+  return rateLedger(null, usage, selection, config, at);
+}
+
+function rateLedger(ledger, usage, selection, config, at) {
+  if (usage === null || usage === undefined || typeof usage !== "object") return null;
+  const totals = bucketSnapshot(usage);
+  if (totalOf(totals) <= 0) return null;
+  const moment = at === undefined ? Date.now() : at;
+  const model = pickModel(selection);
+  const { usd, peak, source } = usdBreakdown(totals, selection, config, ledger, moment);
+  const rows = [];
+  let amount = 0;
+  for (const definition of BUCKET_DEFINITIONS) {
+    const count = totals[definition.key];
+    if (count <= 0) continue;
+    const subtotal = usd[definition.key] * config.currency.perUsd;
+    amount += subtotal;
+    rows.push({ key: definition.key, label: definition.label, tokens: count, amount: subtotal });
+  }
+  const modelLabel =
+    model === null
+      ? null
+      : typeof model.provider === "string" && model.provider.length > 0
+        ? model.provider + " / " + model.model
+        : model.model;
+  return { rows, tokens: totalOf(totals), amount, modelLabel, source, peak };
+}
+
+/* ──────────────────────────────── 格式化 ──────────────────────────────── */
+
+function compactNumber(value) {
+  if (value >= 100) return String(Math.round(value));
+  return String(Math.round(value * 10) / 10);
+}
+
+function formatTokens(value) {
+  const count = Math.round(value);
+  if (count < 1000) return String(count);
+  if (count < 1e6) return compactNumber(count / 1e3) + "K";
+  return compactNumber(count / 1e6) + "M";
+}
+
+function formatMoney(value, symbol) {
+  const abs = Math.abs(value);
+  let digits = 2;
+  if (abs > 0 && abs < 0.001) digits = 5;
+  else if (abs < 0.1) digits = 4;
+  else if (abs < 1) digits = 3;
+  let text = value.toFixed(digits);
+  if (digits > 2) {
+    text = text.replace(/0+$/, "");
+    const dot = text.indexOf(".");
+    const decimals = dot === -1 ? 0 : text.length - dot - 1;
+    if (decimals < 2) text = text + "0".repeat(2 - decimals);
+  }
+  return symbol + text;
+}
+
+function formatRate(value) {
+  return String(Number(value.toFixed(4)));
+}
+
+/* ──────────────────────────────── 组件 ──────────────────────────────── */
+
+function TokenPurseView({ usage, selection, t, sessionId }) {
+  const [config, setConfig] = useState(readConfig);
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [invalid, setInvalid] = useState(false);
+  const [fxState, setFxState] = useState("idle");
+  const [fxNote, setFxNote] = useState(null);
+  const [ledger, setLedger] = useState(() => readLedger(sessionId));
+  const [tick, setTick] = useState(0);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointerDown = (event) => {
+      if (rootRef.current !== null && event.target instanceof Node && rootRef.current.contains(event.target)) return;
+      setOpen(false);
+      setEditing(false);
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        setEditing(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  const currentModel = pickModel(selection);
+  const currentModelId = currentModel === null ? null : currentModel.model;
+  const currentProviderId =
+    currentModel === null || typeof currentModel.provider !== "string" || currentModel.provider.length === 0 ? null : currentModel.provider;
+
+  /* 投影只给累计值；每次变化记成一条带时刻的增量，之后按各自发生时刻的档位计价。 */
+  useEffect(() => {
+    if (usage === null || usage === undefined) return;
+    setLedger((current) => syncLedger(current, usage, currentProviderId, currentModelId, Date.now()));
+  }, [usage, currentProviderId, currentModelId]);
+
+  useEffect(() => {
+    writeLedger(sessionId, ledger);
+  }, [sessionId, ledger]);
+
+  /* 高峰/低峰随时间切换，定时重算；tick 只用于驱动上面的 useMemo。 */
+  useEffect(() => {
+    const timer = setInterval(() => setTick((value) => value + 1), 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const rated = useMemo(
+    () => rateLedger(ledger, usage, selection, config, Date.now()),
+    [ledger, usage, selection, config, tick]
+  );
+
+  if (rated === null) return null;
+
+  const symbol = config.currency.symbol;
+  const amountText = formatMoney(rated.amount, symbol);
+  const modelText = rated.modelLabel === null ? t("panel.defaultModel") : rated.modelLabel;
+
+  const beginEdit = () => {
+    setDraft(JSON.stringify(config, null, 2));
+    setInvalid(false);
+    setEditing(true);
+  };
+  const saveEdit = () => {
+    let parsed;
+    try {
+      parsed = JSON.parse(draft);
+    } catch (parseError) {
+      setInvalid(true);
+      return;
+    }
+    const merged = mergeConfig(cloneConfig(DEFAULT_CONFIG), parsed);
+    writeConfig(merged);
+    setConfig(merged);
+    setInvalid(false);
+    setEditing(false);
+  };
+  const resetEdit = () => {
+    try {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } catch (removeError) {
+      /* 忽略：读回默认值即可。 */
+    }
+    const fresh = readConfig();
+    setConfig(fresh);
+    setDraft(JSON.stringify(fresh, null, 2));
+    setInvalid(false);
+  };
+  const updateCurrency = (patch) => {
+    const merged = mergeConfig(config, { currency: patch });
+    writeConfig(merged);
+    setConfig(merged);
+  };
+  const currencyPreset = findCurrencyPreset(config.currency.code, symbol);
+
+  const refreshRate = (codeOverride) => {
+    const override = typeof codeOverride === "string" && codeOverride.length > 0 ? codeOverride : null;
+    const code = override !== null ? override : currencyPreset === null ? "" : currencyPreset.code;
+    if (code.length === 0 || typeof fetch !== "function") {
+      setFxNote(t("currency.manual"));
+      return;
+    }
+    setFxState("loading");
+    setFxNote(null);
+    fetchUsdRate(code).then((result) => {
+      if (result === null) {
+        setFxState("error");
+        setFxNote(t("currency.failed"));
+        return;
+      }
+      setConfig((current) => {
+        const merged = mergeConfig(current, { currency: { perUsd: result.rate } });
+        writeConfig(merged);
+        return merged;
+      });
+      writeFxTime(Date.now());
+      setFxState("idle");
+      setFxNote(t("currency.updated", { rate: formatRate(result.rate), source: result.source }));
+    });
+  };
+
+  const maybeAutoFetch = () => {
+    if (config.currency.auto !== true || currencyPreset === null) return;
+    if (Date.now() - readFxTime() < FX_TTL_MS) return;
+    refreshRate(currencyPreset.code);
+  };
+
+  return h(
+    "span",
+    { className: CSS.root, ref: rootRef },
+    h(
+      "button",
+      {
+        type: "button",
+        className: CSS.trigger,
+        "aria-label": t("trigger.aria", { amount: amountText }),
+        "aria-haspopup": "dialog",
+        "aria-expanded": open,
+        onClick: () => {
+          const next = !open;
+          setOpen(next);
+          if (next) maybeAutoFetch();
+        }
+      },
+      h("span", { className: CSS.approx, "aria-hidden": true }, "≈"),
+      h("span", { className: CSS.amount }, amountText),
+      h("span", { className: open ? CSS.chevron + " " + CSS.chevronOpen : CSS.chevron, "aria-hidden": true }, "▾")
+    ),
+    open
+      ? h(
+          "div",
+          { className: CSS.panel, role: "dialog", "aria-label": t("panel.title") },
+          h(
+            "div",
+            { className: CSS.head },
+            h("span", { className: CSS.title }, t("panel.title")),
+            h("span", { className: CSS.total }, "≈" + amountText)
+          ),
+          h(
+            "div",
+            { className: CSS.modelLine },
+            h("span", null, t("panel.model")),
+            h(
+              "span",
+              {
+                className:
+                  CSS.sourceChip +
+                  (rated.source === "provider" ? " " + CSS.sourceChipExact : rated.source === "fallback" ? " " + CSS.sourceChipMiss : ""),
+                title: t("rate.source." + rated.source)
+              },
+              t("rate.source." + rated.source)
+            ),
+            h("span", { className: CSS.modelValue, title: modelText }, modelText)
+          ),
+          h(
+            "dl",
+            { className: CSS.rows },
+            rated.rows.map((row) =>
+              h(
+                "div",
+                { className: CSS.row, key: row.key },
+                h("dt", null, t(row.label)),
+                h(
+                  "dd",
+                  null,
+                  h("span", { className: CSS.tokens }, formatTokens(row.tokens)),
+                  h("span", { className: CSS.sub }, formatMoney(row.amount, symbol))
+                )
+              )
+            ),
+            h(
+              "div",
+              { className: CSS.row + " " + CSS.rowTotal },
+              h("dt", null, t("panel.totalTokens")),
+              h("dd", null, h("span", { className: CSS.tokens }, formatTokens(rated.tokens)))
+            )
+          ),
+          h("div", { className: CSS.note }, t("panel.note")),
+          rated.source === "fallback"
+            ? h("div", { className: CSS.warnNote }, t("rate.unpriced", { model: rated.modelLabel }))
+            : null,
+          rated.peak === null || rated.peak === undefined
+            ? null
+            : h(
+                "div",
+                { className: CSS.peakNote },
+                h(
+                  "span",
+                  { className: CSS.peakChip + (rated.peak.active ? " " + CSS.peakChipOn : "") },
+                  rated.peak.active ? t("peak.high", { factor: rated.peak.multiplier }) : t("peak.low")
+                ),
+                h("span", { className: CSS.peakText }, t("peak.note", { windows: rated.peak.windows.join(" / "), timezone: rated.peak.timezone }))
+              ),
+          h(
+            "div",
+            { className: CSS.fields },
+            h("span", { className: CSS.fieldLabel }, t("currency.label")),
+            h(
+              "select",
+              {
+                className: CSS.select,
+                value: currencyPreset === null ? "custom" : currencyPreset.code,
+                onChange: (event) => {
+                  const preset = CURRENCY_PRESETS.find((item) => item.code === event.target.value);
+                  if (preset === undefined) return;
+                  updateCurrency({ code: preset.code, symbol: preset.symbol, perUsd: preset.perUsd });
+                  refreshRate(preset.code);
+                }
+              },
+              CURRENCY_PRESETS.map((preset) => h("option", { key: preset.code, value: preset.code }, preset.code + " " + preset.symbol)),
+              currencyPreset === null ? h("option", { value: "custom" }, t("currency.custom", { symbol })) : null
+            ),
+            h("span", { className: CSS.fieldLabel }, t("currency.perUsd")),
+            h("input", {
+              key: symbol + ":" + config.currency.perUsd,
+              className: CSS.rateInput,
+              type: "number",
+              min: "0.0001",
+              step: "0.01",
+              defaultValue: String(config.currency.perUsd),
+              "aria-label": t("currency.perUsd"),
+              onBlur: (event) => updateCurrency({ perUsd: event.target.value }),
+              onKeyDown: (event) => {
+                if (event.key === "Enter") event.target.blur();
+              }
+            })
+          ),
+          h(
+            "div",
+            { className: CSS.fxRow },
+            h(
+              "button",
+              {
+                type: "button",
+                className: CSS.fxButton,
+                disabled: fxState === "loading" || currencyPreset === null,
+                onClick: () => refreshRate()
+              },
+              fxState === "loading" ? t("currency.fetching") : t("currency.fetch")
+            ),
+            h(
+              "label",
+              { className: CSS.fxAuto },
+              h("input", {
+                type: "checkbox",
+                checked: config.currency.auto === true,
+                onChange: (event) => updateCurrency({ auto: event.target.checked })
+              }),
+              t("currency.auto")
+            )
+          ),
+          fxNote !== null ? h("div", { className: CSS.fxNote }, fxNote) : null,
+          editing
+            ? h(
+                "div",
+                { className: CSS.editor },
+                h("textarea", {
+                  className: CSS.textarea,
+                  value: draft,
+                  spellCheck: false,
+                  "aria-label": t("rates.hint"),
+                  onChange: (event) => setDraft(event.target.value)
+                }),
+                h("div", { className: CSS.hint }, t("rates.hint")),
+                invalid ? h("div", { className: CSS.error }, t("rates.invalid")) : null,
+                h(
+                  "div",
+                  { className: CSS.actions },
+                  h("button", { type: "button", className: CSS.ghost, onClick: resetEdit }, t("rates.reset")),
+                  h("button", { type: "button", className: CSS.primary, onClick: saveEdit }, t("rates.save"))
+                )
+              )
+            : h("button", { type: "button", className: CSS.editButton, onClick: beginEdit }, t("rates.edit"))
+        )
+      : null
+  );
+}
+
+/**
+ * 把花费徽标宿进会话统计行，与「轮数·步数·tok/s」「token·缓存命中率」同行。
+ *
+ * 统计行由 @deepseek-ai/dsh-client-ui-chat 直接渲染，不是插槽，所以这里：
+ *   1. 从本插槽在同一父节点下找到带 data-composer-stats 的那一行；
+ *   2. 用 portal 把徽标挂进该行，使其成为同一 flex 行里的一枚 pill；
+ *   3. 行消失（空会话）时自动卸载，行重建（切换会话）时自动重挂。
+ */
+function StatsRowBadge({ useProjection, t, sessionId }) {
+  const usage = useProjection("tokenUsage");
+  const selection = useProjection("modelSelection");
+  const anchorRef = useRef(null);
+  const [host, setHost] = useState(null);
+
+  useEffect(() => {
+    const anchor = anchorRef.current;
+    const container = anchor === null || anchor === undefined ? null : anchor.parentElement;
+    if (container === null || container === undefined || typeof MutationObserver === "undefined") return undefined;
+    const locate = () => container.querySelector("[data-composer-stats]");
+    const sync = () => {
+      const found = locate();
+      setHost((current) => (found === current ? current : found));
+    };
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(container, { childList: true });
+    return () => observer.disconnect();
+  }, []);
+
+  const anchor = h("span", { ref: anchorRef, className: CSS.host, "aria-hidden": "true" });
+  if (host === null) return anchor;
+  return h(React.Fragment, null, anchor, createPortal(h(TokenPurseView, { usage, selection, t, sessionId }), host));
+}
+
+/* ──────────────────────────────── 词条 ──────────────────────────────── */
+
+const zh = {
+  "trigger.aria": "Token 花费约 {amount}",
+  "panel.title": "Token 花费",
+  "panel.model": "计价模型",
+  "panel.defaultModel": "默认费率",
+  "panel.totalTokens": "合计 tokens",
+  "panel.note": "按本地费率估算，仅供参考，并非账单数据。",
+  "bucket.input": "输入（未缓存）",
+  "bucket.cacheRead": "缓存命中",
+  "bucket.cacheWrite": "缓存写入",
+  "bucket.output": "输出",
+  "rates.edit": "调整费率",
+  "rates.hint": "以 JSON 覆盖默认费率（美元 / 百万 token）。",
+  "rates.save": "保存",
+  "rates.reset": "恢复默认",
+  "rates.invalid": "JSON 格式有误，请检查后重试。",
+  "currency.label": "货币",
+  "currency.perUsd": "1 美元 =",
+  "currency.custom": "自定义 {symbol}",
+  "currency.fetch": "自动获取汇率",
+  "currency.fetching": "获取中…",
+  "currency.auto": "自动",
+  "currency.updated": "已更新：1 美元 = {rate}（{source}）",
+  "currency.failed": "获取失败，已保留当前汇率",
+  "currency.manual": "该币种无法自动获取，请手动填写",
+  "peak.high": "高峰 ×{factor}",
+  "peak.low": "低峰",
+  "peak.note": "{windows} · {timezone}",
+  "rate.unpriced": "未配置 {model} 的费率，当前按通用兜底价估算——点下方「调整费率」补上。",
+  "rate.source.provider": "专属费率",
+  "rate.source.model": "通用费率",
+  "rate.source.substring": "按型号匹配",
+  "rate.source.fallback": "未配置"
+};
+
+const en = {
+  "trigger.aria": "Token spend roughly {amount}",
+  "panel.title": "Token spend",
+  "panel.model": "Priced model",
+  "panel.defaultModel": "Default rates",
+  "panel.totalTokens": "Total tokens",
+  "panel.note": "Estimated from local rates — an approximation, not a bill.",
+  "bucket.input": "Input (uncached)",
+  "bucket.cacheRead": "Cache read",
+  "bucket.cacheWrite": "Cache write",
+  "bucket.output": "Output",
+  "rates.edit": "Edit rates",
+  "rates.hint": "Override default rates with JSON (USD per million tokens).",
+  "rates.save": "Save",
+  "rates.reset": "Reset",
+  "rates.invalid": "Invalid JSON — please check and retry.",
+  "currency.label": "Currency",
+  "currency.perUsd": "1 USD =",
+  "currency.custom": "Custom {symbol}",
+  "currency.fetch": "Auto-fetch rate",
+  "currency.fetching": "Fetching…",
+  "currency.auto": "Auto",
+  "currency.updated": "Updated: 1 USD = {rate} ({source})",
+  "currency.failed": "Fetch failed — keeping current rate",
+  "currency.manual": "Can't auto-fetch this currency — enter it manually",
+  "peak.high": "Peak ×{factor}",
+  "peak.low": "Off-peak",
+  "peak.note": "{windows} · {timezone}",
+  "rate.unpriced": "No rate configured for {model} — estimating with the generic fallback. Add it under Edit rates.",
+  "rate.source.provider": "Provider rate",
+  "rate.source.model": "Generic rate",
+  "rate.source.substring": "Model match",
+  "rate.source.fallback": "Unpriced"
+};
+
+/* ──────────────────────────────── 注册 ──────────────────────────────── */
+
+const inject = ["sessions", "slots", "locale"];
+
+function apply(ctx) {
+  ctx.effect(() => ctx.locale.register(NS, { zh, en }), "token-purse: dictionaries");
+  ctx.slots.inject("conversation.composer.dock", () =>
+    ctx.slots.register({ name: "conversation.composer.dock", id: "token-purse", order: 100, locale: NS }, StatsRowBadge)
+  );
+}
+
+exports.apply = apply;
+exports.inject = inject;
