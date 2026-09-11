@@ -27,6 +27,14 @@ function check(label, condition) {
   }
 }
 
+/* 固定“当前时间”为周一 12:00 Asia/Shanghai（空闲时段），让渲染测试可复现。 */
+const FIXED_NOW = new Date("2025-01-06T04:00:00Z").getTime();
+const monday0900Utc = new Date("2025-01-06T01:00:00Z");
+const monday1200Utc = new Date("2025-01-06T04:00:00Z");
+const monday1430Utc = new Date("2025-01-06T06:30:00Z");
+const monday1800Utc = new Date("2025-01-06T10:00:00Z");
+const sunday0900Utc = new Date("2025-01-05T01:00:00Z");
+
 function fakeReact() {
   let index = 0;
   const store = [];
@@ -66,7 +74,17 @@ function fakeReact() {
 const fakeReactDom = { createPortal: (node, container) => ({ type: "portal", node, container }) };
 
 function makeSandbox(react, extra) {
-  const sandbox = { console };
+  const RealDate = Date;
+  class FixedDate extends RealDate {
+    constructor(...args) {
+      if (args.length === 0) super(FIXED_NOW);
+      else super(...args);
+    }
+    static now() {
+      return FIXED_NOW;
+    }
+  }
+  const sandbox = { console, Date: FixedDate };
   sandbox.window = {
     localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
     __ModuleLoader__: { load: (registration) => { sandbox.registration = registration; } }
@@ -109,6 +127,10 @@ console.log("pure helpers");
 const react = fakeReact();
 const internals = loadInternals(react);
 const config = internals.DEFAULT_CONFIG;
+/* 只带模型名、不带 provider 前缀的条目（验证兜底匹配）。 */
+const modelOnlyConfig = internals.mergeConfig(config, {
+  models: { "deepseek-v4-pro": { currency: "CNY", input: 4.5 }, "deepseek-v4-flash": { currency: "CNY", input: 1 } }
+});
 
 check("formatMoney(0.28) -> $0.28", internals.formatMoney(0.28, "$") === "$0.28");
 check("formatMoney(0.0123) -> $0.0123", internals.formatMoney(0.0123, "$") === "$0.0123");
@@ -116,16 +138,17 @@ check("formatMoney(12.5) -> $12.50", internals.formatMoney(12.5, "$") === "$12.5
 check("formatTokens(1234567) -> 1.2M", internals.formatTokens(1234567) === "1.2M");
 check("formatTokens(1500) -> 1.5K", internals.formatTokens(1500) === "1.5K");
 
-check("resolveRates exact", internals.resolveRates(config, "deepseek-reasoner").output === 2.19);
-check("resolveRates substring", internals.resolveRates(config, "deepseek-v4-flash-exp").input === 0.28);
-check("resolveRates fallback", internals.resolveRates(config, "utterly-unknown").input === 0.28);
+check("resolveRates provider exact", internals.resolveRates(config, "deepseek-flash", "deepseek-official").output === 4 && internals.resolveRates(config, "deepseek-flash", "deepseek-official").currency === "CNY");
+check("resolveRates model exact", internals.resolveRates(modelOnlyConfig, "deepseek-v4-pro", "some-gateway").input === 4.5);
+check("resolveRates substring", internals.resolveRates(modelOnlyConfig, "deepseek-v4-flash-exp", "packyapi").input === 1);
+check("resolveRates fallback", internals.resolveRates(config, "utterly-unknown").input === 1);
 
 const usage = { uncachedInputTokens: 1000000, cacheReadTokens: 1000000, cacheWriteTokens: 0, outputTokens: 500000 };
-const selection = { next: { provider: "packyapi", model: "deepseek-chat" }, lastUsed: null };
-const rated = internals.rateUsage(usage, selection, config);
-check("rateUsage amount 0.518", Math.abs(rated.amount - 0.518) < 1e-9);
+const selection = { next: { provider: "deepseek-official", model: "deepseek-flash" }, lastUsed: null };
+const rated = internals.rateUsage(usage, selection, config, monday1200Utc.getTime());
+check("rateUsage CNY 1 + 0.02 + 2 = 3.02", Math.abs(rated.amount - 3.02) < 1e-9);
 check("rateUsage drops empty buckets", rated.rows.length === 3);
-check("rateUsage model label", rated.modelLabel === "packyapi / deepseek-chat");
+check("rateUsage model label", rated.modelLabel === "deepseek-official / deepseek-flash");
 check("rateUsage zero usage -> null", internals.rateUsage({}, selection, config) === null);
 
 const merged = internals.mergeConfig(config, {
@@ -138,8 +161,10 @@ check("mergeConfig adds model", merged.models["my-model"].input === 1 && merged.
 check("matchCurrencyPreset CNY", internals.matchCurrencyPreset("¥", 7.2).code === "CNY");
 check("matchCurrencyPreset JPY distinct", internals.matchCurrencyPreset("¥", 150).code === "JPY");
 check("matchCurrencyPreset custom -> null", internals.matchCurrencyPreset("$", 3) === null);
+const usdConfig = internals.mergeConfig(config, { currency: { code: "USD", symbol: "$", perUsd: 1 }, fx: { CNY: 7.2 } });
+check("CNY rates -> USD display", Math.abs(internals.rateUsage(usage, selection, usdConfig, monday1200Utc.getTime()).amount - 3.02 / 7.2) < 1e-9);
 const cnyConfig = internals.mergeConfig(config, { currency: { symbol: "¥", perUsd: 7.2 } });
-check("currency factor applied", Math.abs(internals.rateUsage(usage, selection, cnyConfig).amount - 0.518 * 7.2) < 1e-9);
+check("CNY display keeps list price", Math.abs(internals.rateUsage(usage, selection, cnyConfig, monday1200Utc.getTime()).amount - 3.02) < 1e-9);
 check("findCurrencyPreset CNY", internals.findCurrencyPreset("CNY", "¥").code === "CNY");
 check("findCurrencyPreset symbol mismatch -> null", internals.findCurrencyPreset("USD", "¥") === null);
 check("formatRate trims", internals.formatRate(6.728034) === "6.728");
@@ -150,12 +175,6 @@ check("fetchUsdRate parses provider", fx !== null && Math.abs(fx.rate - 7.11) < 
 check("fetchUsdRate unknown -> null", (await internals.fetchUsdRate("XYZ")) === null);
 
 /* ── 1b. 分时时段 ───────────────────────────────────────────────────── */
-
-const monday0900Utc = new Date("2025-01-06T01:00:00Z"); // 周一 09:00 Asia/Shanghai
-const monday1200Utc = new Date("2025-01-06T04:00:00Z"); // 周一 12:00
-const monday1430Utc = new Date("2025-01-06T06:30:00Z"); // 周一 14:30
-const monday1800Utc = new Date("2025-01-06T10:00:00Z"); // 周一 18:00
-const sunday0900Utc = new Date("2025-01-05T01:00:00Z"); // 周日 09:00
 
 const peakWindow = internals.parsePeakWindow("Mon-Fri 09:00-12:00");
 check("parsePeakWindow days+clock", peakWindow !== null && peakWindow.days.has(1) && peakWindow.days.has(5) && !peakWindow.days.has(6) && peakWindow.from === 540 && peakWindow.to === 720);
@@ -173,9 +192,10 @@ const flashSelection = { next: { provider: "packyapi", model: "deepseek-flash" }
 const flashUsage = { uncachedInputTokens: 1000000, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 1000000 };
 const flashOff = internals.rateUsage(flashUsage, flashSelection, config, monday1200Utc.getTime());
 const flashHigh = internals.rateUsage(flashUsage, flashSelection, config, monday0900Utc.getTime());
-check("flash off-peak $4.00", Math.abs(flashOff.amount - 4) < 1e-9 && flashOff.peak.active === false);
-check("flash peak $8.00 (x2)", Math.abs(flashHigh.amount - 8) < 1e-9 && flashHigh.peak.active === true && flashHigh.peak.multiplier === 2);
-check("deepseek-chat has no peak", internals.resolveRates(config, "deepseek-chat").peakMultiplier === 1);
+check("packyapi flash idle ¥4.00", Math.abs(flashOff.amount - 4) < 1e-9 && flashOff.peak.active === false);
+check("packyapi flash peak ¥8.00 (x2)", Math.abs(flashHigh.amount - 8) < 1e-9 && flashHigh.peak.active === true && flashHigh.peak.multiplier === 2);
+const officialFlashIdle = internals.rateUsage(flashUsage, { next: { provider: "deepseek-official", model: "deepseek-flash" } }, config, monday1200Utc.getTime());
+check("official flash idle ¥5.00", Math.abs(officialFlashIdle.amount - 5) < 1e-9);
 
 /* ── 1d. 增量账本 ───────────────────────────────────────────────────── */
 
@@ -210,8 +230,9 @@ check("migrated config gains packyapi flash", Math.abs(migrated.models["packyapi
 /* ── 1f. provider 专属费率 ──────────────────────────────────────────── */
 
 check("provider/model wins over model", internals.resolveRates(config, "deepseek-flash", "packyapi").input === 0.8 && internals.rateSource(config, "deepseek-flash", "packyapi") === "provider");
-check("other provider unpriced -> fallback", internals.rateSource(config, "deepseek-flash", "deepseek-official") === "fallback");
-check("model-only key matches any provider", internals.rateSource(config, "deepseek-v4-pro", "packyapi") === "model");
+check("official provider has its own rate", internals.rateSource(config, "deepseek-flash", "deepseek-official") === "provider" && internals.resolveRates(config, "deepseek-flash", "deepseek-official").input === 1);
+check("unknown provider -> fallback (CNY)", internals.rateSource(config, "deepseek-flash", "some-gateway") === "fallback" && internals.resolveRates(config, "some-model", "some-gateway").currency === "CNY");
+check("model-only key matches any provider", internals.rateSource(modelOnlyConfig, "deepseek-v4-flash-exp", "packyapi") === "substring" && internals.rateSource(modelOnlyConfig, "deepseek-v4-pro", "some-gateway") === "model");
 const providerLedger = internals.syncLedger(
   internals.syncLedger(internals.emptyLedger(), { uncachedInputTokens: 0 }, "packyapi", "deepseek-flash", 0),
   { uncachedInputTokens: 1000000 }, "packyapi", "deepseek-flash", monday1200Utc.getTime()
@@ -223,10 +244,10 @@ const officialLedger = internals.syncLedger(
   { uncachedInputTokens: 1000000 }, "deepseek-official", "deepseek-flash", monday1200Utc.getTime()
 );
 const officialRated = internals.rateLedger(officialLedger, { uncachedInputTokens: 1000000 }, { next: { provider: "deepseek-official", model: "deepseek-flash" } }, config, monday1200Utc.getTime());
-check("official flash unpriced -> fallback 0.28", Math.abs(officialRated.amount - 0.28) < 1e-9 && officialRated.source === "fallback");
+check("official flash idle ¥1.00", Math.abs(officialRated.amount - 1) < 1e-9 && officialRated.source === "provider");
 const mixedLedger = internals.syncLedger(providerLedger, { uncachedInputTokens: 2000000 }, "deepseek-official", "deepseek-flash", monday1200Utc.getTime());
 const mixedRated = internals.rateLedger(mixedLedger, { uncachedInputTokens: 2000000 }, { next: { provider: "deepseek-official", model: "deepseek-flash" } }, config, monday1200Utc.getTime());
-check("ledger keeps per-entry provider (0.8 + 0.28)", Math.abs(mixedRated.amount - 1.08) < 1e-9);
+check("ledger keeps per-entry provider (0.8 + 1)", Math.abs(mixedRated.amount - 1.8) < 1e-9);
 
 /* ── 2. 模块外壳与注册 ──────────────────────────────────────────────── */
 
@@ -284,8 +305,8 @@ react.reset();
 react.seed({ 1: true }); // open the popover panel
 const tree = internals.TokenPurseView({ usage, selection, t });
 const serialized = JSON.stringify(tree);
-check("badge renders amount", serialized.indexOf("≈") !== -1 && serialized.indexOf("$0.518") !== -1);
-check("panel carries model label", serialized.indexOf("packyapi / deepseek-chat") !== -1);
+check("badge renders amount", serialized.indexOf("≈") !== -1 && serialized.indexOf("¥3.02") !== -1);
+check("panel carries model label", serialized.indexOf("deepseek-official / deepseek-flash") !== -1);
 check("trigger has aria label", serialized.indexOf("trigger.aria") !== -1);
 
 react.reset();

@@ -27,25 +27,25 @@ const LEDGER_KEY = "dsh.token-purse.ledger.v1";
 /* v1 里 deepseek-flash 是官方示例价；迁移时只有仍等于旧值的条目才换成新默认价。 */
 const LEGACY_FLASH_V1 = { input: 0.28, cacheRead: 0.028, output: 0.42 };
 
-/* 兜底费率：美元 / 百万 token。cacheRead/cacheWrite 缺省时按 input 计。 */
-const FALLBACK_RATES = { input: 0.28, cacheRead: 0.028, cacheWrite: 0.28, output: 0.42, peakMultiplier: 1 };
+/* 兜底费率（人民币 / 百万 token，取 DeepSeek 官方 Flash 空闲价）。cacheRead/cacheWrite 缺省时按 input 计。 */
+const FALLBACK_RATES = { currency: "CNY", input: 1, cacheRead: 0.02, cacheWrite: 1, output: 4, peakMultiplier: 1 };
 
-/* 费率表（美元 / 百万 token）。peakMultiplier > 1 表示在 peak.windows 时段内单价乘该系数。 */
+/*
+ * 费率表：每条自带 currency（默认 CNY）的「每百万 token」单价，含分时系数。
+ * 同一个 model id 在不同 provider 价格不同，所以 key 支持 "provider/model"：
+ * provider/model 精确 → model 精确 → model 子串（取最长）→ 兜底。
+ * 数据源：api-docs.deepseek.com/zh-cn/quick_start/pricing（官方）
+ *         packyapi 官方渠道 = 官方价 × 分组倍率 0.8（docs.packyapi.com/docs/token）。
+ */
 const DEFAULT_MODELS = {
-  /*
-   * 同一个 model id 在不同 provider 价格不同，所以 key 支持 "provider/model"。
-   * 匹配顺序：provider/model 精确 → model 精确 → model 子串（取最长）→ 兜底。
-   */
-  /* packyapi deepseek-flash：低峰 $0.80 / $3.20 / 缓存读取 $0.016，高峰（工作日两段）翻倍。 */
-  "packyapi/deepseek-flash": { input: 0.8, cacheRead: 0.016, cacheWrite: 0.8, output: 3.2, peakMultiplier: 2 },
-  /* 下面是「只有模型名」的官方/示例价，仅当没有 provider 专属条目时兜底。 */
-  "deepseek-chat": { input: 0.28, cacheRead: 0.028, cacheWrite: 0.28, output: 0.42 },
-  "deepseek-reasoner": { input: 0.55, cacheRead: 0.14, cacheWrite: 0.55, output: 2.19 },
-  "deepseek-v3": { input: 0.27, cacheRead: 0.07, cacheWrite: 0.27, output: 1.1 },
-  "deepseek-v3.1": { input: 0.28, cacheRead: 0.028, cacheWrite: 0.28, output: 0.42 },
-  "deepseek-v3.2": { input: 0.28, cacheRead: 0.028, cacheWrite: 0.28, output: 0.42 },
-  "deepseek-v4-pro": { input: 0.55, cacheRead: 0.14, cacheWrite: 0.55, output: 2.19 },
-  "deepseek-v4-flash": { input: 0.28, cacheRead: 0.028, cacheWrite: 0.28, output: 0.42 }
+  /* packyapi：官方空闲价 ×0.8，高峰同样翻倍。 */
+  "packyapi/deepseek-flash": { currency: "CNY", input: 0.8, cacheRead: 0.016, cacheWrite: 0.8, output: 3.2, peakMultiplier: 2 },
+  /* 官方 deepseek-flash（V4.1-Flash）：空闲 ¥1 / 缓存命中 ¥0.02 / 输出 ¥4，高峰翻倍。 */
+  "deepseek-official/deepseek-flash": { currency: "CNY", input: 1, cacheRead: 0.02, cacheWrite: 1, output: 4, peakMultiplier: 2 },
+  /* 旧模型名 deepseek-v4-flash / deepseek-v4-flash-vision-exp 仍可调用，实际由 V4.1-Flash 服务并按 Flash 计费。 */
+  "deepseek-official/deepseek-v4-flash": { currency: "CNY", input: 1, cacheRead: 0.02, cacheWrite: 1, output: 4, peakMultiplier: 2 },
+  /* 官方 deepseek-v4-pro：空闲 ¥4.5 / ¥0.15 / ¥13.5；官方计划 2026-09-14 12:00 后路由到 V4.1-Flash。 */
+  "deepseek-official/deepseek-v4-pro": { currency: "CNY", input: 4.5, cacheRead: 0.15, cacheWrite: 4.5, output: 13.5, peakMultiplier: 2 }
 };
 
 /* 分时时段：工作日 Asia/Shanghai 09:00–12:00、14:00–18:00（半开区间）。 */
@@ -54,7 +54,13 @@ const DEFAULT_PEAK = {
   windows: ["Mon-Fri 09:00-12:00", "Mon-Fri 14:00-18:00"]
 };
 
-const DEFAULT_CONFIG = { currency: { code: "USD", symbol: "$", perUsd: 1, auto: false }, peak: DEFAULT_PEAK, models: DEFAULT_MODELS };
+/* currency.perUsd = 显示币种每 1 美元的数额；fx = 各币种每 1 美元的数额（用于费率自带币种的换算）。 */
+const DEFAULT_CONFIG = {
+  currency: { code: "CNY", symbol: "¥", perUsd: 7.1, auto: false },
+  fx: { USD: 1, CNY: 7.1 },
+  peak: DEFAULT_PEAK,
+  models: DEFAULT_MODELS
+};
 
 const FX_TIME_KEY = "dsh.token-purse.fx.v1";
 const FX_TTL_MS = 12 * 60 * 60 * 1000;
@@ -258,13 +264,32 @@ function normalizeRates(raw) {
   const source = raw !== null && raw !== undefined && typeof raw === "object" ? raw : {};
   const input = toNumber(source.input, FALLBACK_RATES.input);
   const peakMultiplier = toNumber(source.peakMultiplier, 1);
+  const currency =
+    typeof source.currency === "string" && source.currency.length > 0 && source.currency.length <= 8
+      ? source.currency.toUpperCase()
+      : FALLBACK_RATES.currency;
   return {
+    currency,
     input,
     cacheRead: toNumber(source.cacheRead, input),
     cacheWrite: toNumber(source.cacheWrite, input),
     output: toNumber(source.output, FALLBACK_RATES.output),
     peakMultiplier: peakMultiplier > 1 ? peakMultiplier : 1
   };
+}
+
+/** fx 表：各币种每 1 美元的数额（USD 恒为 1）。 */
+function normalizeFx(raw) {
+  const fx = { USD: 1 };
+  if (raw === null || raw === undefined || typeof raw !== "object" || Array.isArray(raw)) return fx;
+  for (const key of Object.keys(raw)) {
+    const code = key.toUpperCase();
+    if (code.length === 0 || code.length > 8) continue;
+    if (code === "__PROTO__" || code === "PROTOTYPE" || code === "CONSTRUCTOR") continue;
+    const value = toNumber(raw[key], null);
+    if (value !== null && value > 0) fx[code] = value;
+  }
+  return fx;
 }
 
 function normalizePeak(raw) {
@@ -289,6 +314,7 @@ function cloneConfig(config) {
       perUsd: config.currency.perUsd,
       auto: config.currency.auto === true
     },
+    fx: normalizeFx(config.fx),
     peak: normalizePeak(config.peak),
     models
   };
@@ -325,6 +351,11 @@ function mergeConfig(base, patch) {
       if (key === "__proto__" || key === "prototype" || key === "constructor") continue;
       merged.models[key] = normalizeRates(models[rawKey]);
     }
+  }
+  const fx = patch.fx;
+  if (fx !== null && fx !== undefined && typeof fx === "object" && !Array.isArray(fx)) {
+    const normalized = normalizeFx(fx);
+    for (const code of Object.keys(normalized)) merged.fx[code] = normalized[code];
   }
   return merged;
 }
@@ -547,6 +578,7 @@ function ratesAt(config, modelId, at, peak, provider) {
   if (!isPeakAt(new Date(at), peak)) return rates;
   const factor = rates.peakMultiplier;
   return {
+    currency: rates.currency,
     input: rates.input * factor,
     cacheRead: rates.cacheRead * factor,
     cacheWrite: rates.cacheWrite * factor,
@@ -636,9 +668,21 @@ function syncLedger(current, usage, providerId, modelId, now) {
 /* ── 计费 ── */
 
 function costBuckets(buckets, rates) {
-  const usd = zeroBuckets();
-  for (const definition of BUCKET_DEFINITIONS) usd[definition.key] = (buckets[definition.key] * rates[definition.rate]) / 1e6;
-  return usd;
+  const native = zeroBuckets();
+  for (const definition of BUCKET_DEFINITIONS) native[definition.key] = (buckets[definition.key] * rates[definition.rate]) / 1e6;
+  return native;
+}
+
+/** 解析 fx 表：显示币种一律以 currency.perUsd 为准，USD 恒为 1。 */
+function fxPerUsd(config) {
+  const safe = config !== null && config !== undefined ? config : {};
+  const fx = normalizeFx(safe.fx);
+  const currency = safe.currency !== null && safe.currency !== undefined && typeof safe.currency === "object" ? safe.currency : {};
+  const code = typeof currency.code === "string" && currency.code.length > 0 ? currency.code.toUpperCase() : "USD";
+  const perUsd = toNumber(currency.perUsd, 1);
+  fx[code] = code === "USD" ? 1 : perUsd > 0 ? perUsd : 1;
+  fx.USD = 1;
+  return fx;
 }
 
 function usdBreakdown(totals, selection, config, ledger, at) {
@@ -646,11 +690,15 @@ function usdBreakdown(totals, selection, config, ledger, at) {
   const modelId = model === null ? null : model.model;
   const providerId = model === null || typeof model.provider !== "string" || model.provider.length === 0 ? null : model.provider;
   const peak = parsePeak(config);
+  const fx = fxPerUsd(config);
   const usd = zeroBuckets();
   const accumulate = (buckets, entryProvider, entryModel, moment) => {
     const rates = ratesAt(config, entryModel === null ? modelId : entryModel, moment, peak, entryProvider === null || entryProvider === undefined ? providerId : entryProvider);
     const cost = costBuckets(buckets, rates);
-    for (const key of BUCKETS) usd[key] += cost[key];
+    /* 费率自带币种 → 美元：除以「该币种每 1 美元的数额」；显示时再乘 currency.perUsd。 */
+    const ratePerUsd = toNumber(fx[rates.currency], 1);
+    const factor = ratePerUsd > 0 ? 1 / ratePerUsd : 1;
+    for (const key of BUCKETS) usd[key] += cost[key] * factor;
   };
   if (ledger !== null && ledger !== undefined) {
     if (ledger.base !== null) accumulate(ledger.base.b, ledger.base.provider, ledger.base.model, ledger.base.at);
@@ -866,7 +914,11 @@ function TokenPurseView({ usage, selection, t, sessionId }) {
         return;
       }
       setConfig((current) => {
-        const merged = mergeConfig(current, { currency: { perUsd: result.rate } });
+        const merged = mergeConfig(current, {
+          currency: { perUsd: result.rate },
+          /* 同步 fx，切到别的显示币种时费率换算仍准确。 */
+          fx: { [code.toUpperCase()]: result.rate }
+        });
         writeConfig(merged);
         return merged;
       });

@@ -66,27 +66,24 @@ TokenPurse 是一个 DSH Web 客户端插件。它在输入框下方的会话统
 
 ## 费率配置
 
-默认费率是**示例值**（美元 / 百万 token），不保证与你的账单一致——尤其是走
-代理或第三方网关（例如 packyapi）时。请按实际价目校准；本插件永远只是
-「约等于」，不能当账单用。
+内置费率来自两个**可溯源**的来源，单位是**人民币 / 百万 token**；每条费率自带
+**currency**（默认 CNY）：
 
-内置模型表：
+    deepseek-official/deepseek-flash    input 1.00   cacheRead 0.020   cacheWrite 1.00   output 4.00    peakMultiplier 2
+    deepseek-official/deepseek-v4-flash input 1.00   cacheRead 0.020   cacheWrite 1.00   output 4.00    peakMultiplier 2
+    deepseek-official/deepseek-v4-pro   input 4.50   cacheRead 0.150   cacheWrite 4.50   output 13.50   peakMultiplier 2
+    packyapi/deepseek-flash             input 0.80   cacheRead 0.016   cacheWrite 0.80   output 3.20    peakMultiplier 2
 
-    packyapi/deepseek-flash   input 0.80   cacheRead 0.016   cacheWrite 0.80   output 3.20   peakMultiplier 2
-    deepseek-chat             input 0.28   cacheRead 0.028   cacheWrite 0.28   output 0.42
-    deepseek-reasoner         input 0.55   cacheRead 0.14    cacheWrite 0.55   output 2.19
-    deepseek-v3               input 0.27   cacheRead 0.07    cacheWrite 0.27   output 1.10
-    deepseek-v3.1 / v3.2      input 0.28   cacheRead 0.028   cacheWrite 0.28   output 0.42
-    deepseek-v4-pro           input 0.55   cacheRead 0.14    cacheWrite 0.55   output 2.19
-    deepseek-v4-flash         input 0.28   cacheRead 0.028   cacheWrite 0.28   output 0.42
+- **deepseek-official** 是 DeepSeek 官方价（api-docs.deepseek.com/zh-cn/quick_start/pricing）。
+- **packyapi** 走官方渠道，价格 = 官方价 × 分组倍率（这里是 0.8，即 8 折）。
+- 官方高峰 = 空闲 ×2，时段为北京时间周一至周五 09:00–12:00、14:00–18:00。
+- 官方已把 `deepseek-v4-flash` / `-vision-exp` 的请求转由 V4.1-Flash 提供服务并按 Flash 计费；
+  `deepseek-v4-pro` 计划 2026-09-14 12:00 后同样路由到 V4.1-Flash。
+- 表里没有的模型（例如 packyapi 的其它分组）显示**未配置**，不猜价。
 
 **同一个 model id 在不同 provider 价格不同**——deepseek-flash 在 packyapi 和
 deepseek-official 就是两个价。所以费率 key 支持 **provider/model**：带 provider
 前缀的条目只对该 provider 生效，只有模型名的条目是通用兜底。
-
-内置里 **packyapi/deepseek-flash** 用 packyapi 价目（低峰 $0.80 / $3.20 /
-缓存读取 $0.016，缓存写入表里没给、按输入计），**peakMultiplier: 2** 表示
-下面分时时段内单价翻倍；其余仍是官方/示例价，按需覆盖。
 
 面板的「计价模型」旁会标出费率来源：**专属费率**（provider/model 精确命中）、
 **通用费率**（只有模型名的条目）、**按型号匹配**（子串命中）、**未配置**（兜底）。
@@ -104,20 +101,23 @@ deepseek-official 就是两个价。所以费率 key 支持 **provider/model**�
 
     {
       "currency": { "code": "CNY", "symbol": "¥", "perUsd": 7.2, "auto": true },
+      "fx": { "USD": 1, "CNY": 7.2 },
       "peak": {
         "timezone": "Asia/Shanghai",
         "windows": ["Mon-Fri 09:00-12:00", "Mon-Fri 14:00-18:00"]
       },
       "models": {
-        "packyapi/deepseek-flash": { "input": 0.80, "cacheRead": 0.016, "cacheWrite": 0.80, "output": 3.20, "peakMultiplier": 2 },
-        "deepseek-official/deepseek-flash": { "input": 0.28, "cacheRead": 0.028, "cacheWrite": 0.28, "output": 0.42 },
-        "my-private-model": { "input": 0.1, "output": 0.2 }
+        "packyapi/deepseek-flash": { "currency": "CNY", "input": 0.80, "cacheRead": 0.016, "cacheWrite": 0.80, "output": 3.20, "peakMultiplier": 2 },
+        "deepseek-official/deepseek-flash": { "currency": "CNY", "input": 1, "cacheRead": 0.02, "cacheWrite": 1, "output": 4, "peakMultiplier": 2 },
+        "my-usd-model": { "currency": "USD", "input": 0.1, "output": 0.2 }
       }
     }
 
 - **currency.symbol**：显示符号，最多 4 个字符。
 - **currency.perUsd**：1 美元折合多少该货币；用人民币就填汇率。
 - **currency.code / currency.auto**：币种代码与自动刷新开关（面板里选币种会自动维护）。
+- **fx**：各币种「每 1 美元多少」的换算表，用来把自带币种的费率折算成显示币种；
+  显示币种本身以 **currency.perUsd** 为准。只写人民币费率时基本不用管它。
 - **peak.timezone**：IANA 时区名，如 **Asia/Shanghai**；**peak.windows** 是
   「星期 起-止」列表，支持 **Mon-Fri**、**Sat,Sun**、**\***。解析不了的项直接
   忽略，全部无效就等于不分时。
@@ -125,14 +125,16 @@ deepseek-official 就是两个价。所以费率 key 支持 **provider/model**�
   顺序为「provider/model 精确 → model 精确 → model 子串（取最长）→ 兜底」；
   provider 前缀的键不参与子串匹配。所以 **deepseek-v4-flash-exp** 会命中
   **deepseek-v4-flash**（没有更精确的条目时）。
+- **models[].currency**：该条费率用什么币种计价（默认 CNY）。不同 provider 用不同
+  币种时，插件先按 **fx** 折成美元、再乘 **currency.perUsd** 显示。
 - 单条费率里 **cacheRead / cacheWrite** 省略时按 **input** 计；
   **peakMultiplier** 省略或 ≤ 1 表示该模型不分时。
 
 ### 分时计价（peak）
 
-像 packyapi 的 **deepseek-flash** 那样，工作日 **09:00–12:00**、**14:00–18:00**
-（Asia/Shanghai）单价是低峰的两倍。开启方式：给模型加 **peakMultiplier**，
-再在顶层 **peak.windows** 写时段。
+DeepSeek 官方（以及走官方渠道的 packyapi）都是：工作日 **09:00–12:00**、
+**14:00–18:00**（Asia/Shanghai）单价是空闲时段的两倍。开启方式：给模型加
+**peakMultiplier**，再在顶层 **peak.windows** 写时段。
 
 - 时段按 **peak.timezone** 判断，与你的系统时区无关；区间是**左闭右开**
   （12:00 整已算低峰），且只在列出的星期生效。
@@ -171,9 +173,8 @@ deepseek-official 就是两个价。所以费率 key 支持 **provider/model**�
 - **金额为 0 或明显偏小？** 多半是模型没命中费率表、走了默认费率，或该 provider
   没有上报 usage（那个投影就是空的）。
 - **≈ 是什么意思？** 估算。DSH 本身不做计费，这里只是拿 token 数乘本地费率。
-- **和账单对不上？** 内置只有 **packyapi/deepseek-flash** 是 packyapi 价目，其它模型仍是
-  官方示例价；网关加价、缓存写入是否计费、分时时段都可能不同。点 **调整费率**
-  按自己的账单校准。
+- **和账单对不上？** 内置的官方价与 packyapi 价都取自公开价目，但你所在的分组、
+  网关倍率、缓存写入是否计费都可能不同。点 **调整费率** 按自己的账单校准。
 - **跨高峰/低峰时段的会话怎么算？** 见「分时计价」：插件观察到的用量按发生
   时刻分档；安装前的历史按打开时的档位补算。
 - **需要改宿主配置吗？** 不需要，纯客户端插件。
@@ -203,6 +204,8 @@ deepseek-official 就是两个价。所以费率 key 支持 **provider/model**�
 
 ## 更新记录
 
+- **0.1.1**：内置费率换成 DeepSeek 官方人民币价与 packyapi 0.8 折价；费率支持自带
+  币种（**currency**）与顶层 **fx** 换算表；显示币种默认改为人民币。
 - **0.1.0**：徽标 + 输入/缓存命中/缓存写入/输出四桶明细；币种切换与自动汇率；
   **packyapi/deepseek-flash** 分时价（**peakMultiplier** / **peak.windows**）并按
   每笔用量发生时刻分段计价；费率按 **provider/model** 区分，面板标注来源。

@@ -72,28 +72,25 @@ A ready-made snippet ships as **cordis.patch.yml**.
 
 ## Rates
 
-The defaults are **examples** (USD per million tokens) and will not match your
-bill, especially behind a proxy or gateway such as packyapi. Calibrate them.
+Built-in rates come from two **traceable** sources and are quoted in **CNY per
+million tokens**; each entry carries its own **currency** (CNY by default):
 
-Built-in table:
+    deepseek-official/deepseek-flash    input 1.00   cacheRead 0.020   cacheWrite 1.00   output 4.00    peakMultiplier 2
+    deepseek-official/deepseek-v4-flash input 1.00   cacheRead 0.020   cacheWrite 1.00   output 4.00    peakMultiplier 2
+    deepseek-official/deepseek-v4-pro   input 4.50   cacheRead 0.150   cacheWrite 4.50   output 13.50   peakMultiplier 2
+    packyapi/deepseek-flash             input 0.80   cacheRead 0.016   cacheWrite 0.80   output 3.20    peakMultiplier 2
 
-    packyapi/deepseek-flash   input 0.80   cacheRead 0.016   cacheWrite 0.80   output 3.20   peakMultiplier 2
-    deepseek-chat             input 0.28   cacheRead 0.028   cacheWrite 0.28   output 0.42
-    deepseek-reasoner         input 0.55   cacheRead 0.14    cacheWrite 0.55   output 2.19
-    deepseek-v3               input 0.27   cacheRead 0.07    cacheWrite 0.27   output 1.10
-    deepseek-v3.1 / v3.2      input 0.28   cacheRead 0.028   cacheWrite 0.28   output 0.42
-    deepseek-v4-pro           input 0.55   cacheRead 0.14    cacheWrite 0.55   output 2.19
-    deepseek-v4-flash         input 0.28   cacheRead 0.028   cacheWrite 0.28   output 0.42
+- **deepseek-official** is DeepSeek's list price (api-docs.deepseek.com/zh-cn/quick_start/pricing).
+- **packyapi** resells the official channel at list price x its group multiplier (0.8 here).
+- Peak = 2x off-peak, weekdays 09:00-12:00 and 14:00-18:00 Beijing time.
+- The official docs now serve deepseek-v4-flash / -vision-exp from V4.1-Flash and bill
+  them at Flash prices; deepseek-v4-pro is scheduled to route there after 2026-09-14 12:00.
+- Models not in the table (e.g. other packyapi groups) show **Unpriced** rather than a guess.
 
 **The same model id can cost different amounts at different providers** —
 deepseek-flash is two different prices at packyapi and deepseek-official. So rate
 keys accept **provider/model**: a provider-prefixed entry applies only to that
 provider, while a bare model id is a generic fallback.
-
-Built in, **packyapi/deepseek-flash** uses packyapi pricing (off-peak $0.80 /
-$3.20 / cached input $0.016; cache write is not listed, so it is billed as input),
-and **peakMultiplier: 2** doubles the price during the peak windows below. The rest
-are still official/example prices — override as needed.
 
 Next to the priced model, the panel labels where the rate came from: **Provider
 rate** (exact provider/model), **Generic rate** (bare model id), **Model match**
@@ -112,14 +109,15 @@ Config shape:
 
     {
       "currency": { "code": "CNY", "symbol": "¥", "perUsd": 7.2, "auto": true },
+      "fx": { "USD": 1, "CNY": 7.2 },
       "peak": {
         "timezone": "Asia/Shanghai",
         "windows": ["Mon-Fri 09:00-12:00", "Mon-Fri 14:00-18:00"]
       },
       "models": {
-        "packyapi/deepseek-flash": { "input": 0.80, "cacheRead": 0.016, "cacheWrite": 0.80, "output": 3.20, "peakMultiplier": 2 },
-        "deepseek-official/deepseek-flash": { "input": 0.28, "cacheRead": 0.028, "cacheWrite": 0.28, "output": 0.42 },
-        "my-private-model": { "input": 0.1, "output": 0.2 }
+        "packyapi/deepseek-flash": { "currency": "CNY", "input": 0.80, "cacheRead": 0.016, "cacheWrite": 0.80, "output": 3.20, "peakMultiplier": 2 },
+        "deepseek-official/deepseek-flash": { "currency": "CNY", "input": 1, "cacheRead": 0.02, "cacheWrite": 1, "output": 4, "peakMultiplier": 2 },
+        "my-usd-model": { "currency": "USD", "input": 0.1, "output": 0.2 }
       }
     }
 
@@ -127,6 +125,9 @@ Config shape:
 - **currency.perUsd**: units per 1 USD (use the FX rate for CNY).
 - **currency.code / currency.auto**: currency code and the auto-refresh flag (the
   panel maintains them when you pick a currency).
+- **fx**: units per 1 USD for each currency, used to convert a rate entry's own
+  currency into the display one. The display currency itself follows
+  **currency.perUsd**. Ignore it if every entry is in CNY.
 - **peak.timezone**: IANA zone, e.g. **Asia/Shanghai**. **peak.windows** is a list of
   weekday-and-time ranges, accepting **Mon-Fri**, **Sat,Sun** and **\***. Entries
   that fail to parse are dropped; if none parse, there is no peak pricing.
@@ -135,14 +136,17 @@ Config shape:
   substring, then fallback; provider-prefixed keys never take part in substring
   matching. So **deepseek-v4-flash-exp** hits **deepseek-v4-flash** when nothing
   more specific matches.
+- **models[].currency**: the currency that entry is quoted in (CNY by default). When
+  providers differ, the plugin converts through **fx** to USD and then applies
+  **currency.perUsd** for display.
 - Missing **cacheRead** / **cacheWrite** fall back to **input**. A missing
   **peakMultiplier** (or one ≤ 1) means that model has no peak pricing.
 
 ### Time-of-day pricing (peak)
 
-Like packyapi's **deepseek-flash**: on weekdays **09:00–12:00** and **14:00–18:00**
-(Asia/Shanghai) the unit price is double the off-peak one. Enable it by giving a
-model a **peakMultiplier** and putting the ranges in the top-level **peak.windows**.
+DeepSeek official (and packyapi, which resells it) charges double during weekdays
+**09:00-12:00** and **14:00-18:00** (Asia/Shanghai). Enable it by giving a model a
+**peakMultiplier** and putting the ranges in the top-level **peak.windows**.
 
 - Ranges are evaluated in **peak.timezone**, independent of your system zone, and
   are **half-open** (12:00 sharp already counts as off-peak); they only apply on the
@@ -191,10 +195,9 @@ arbitrary symbol or rate, use **Edit rates** and set **currency.symbol** /
   provider reported no usage (the projection is then empty).
 - **What does ≈ mean?** Estimate. DSH does not bill; this just multiplies tokens
   by local rates.
-- **Numbers disagree with my bill?** Only **packyapi/deepseek-flash** ships packyapi pricing;
-  every other model is still an official example. Gateway markups, whether cache
-  write is billed, and the peak windows can all differ — use **Edit rates** to
-  calibrate against your own bill.
+- **Numbers disagree with my bill?** The official and packyapi figures both come from
+  public price lists, but your group, gateway markup, and whether cache write is
+  billed can all differ — use **Edit rates** to calibrate against your own bill.
 - **How are sessions that cross peak/off-peak priced?** See **Time-of-day pricing**
   above: observed usage is split by the moment it happened; history from before the
   plugin was installed is priced at the bracket in effect when the panel opened.
@@ -224,6 +227,9 @@ otherwise refresh the page.
 
 ## Changelog
 
+- **0.1.1**: built-in rates switched to DeepSeek's official CNY list price and
+  packyapi's 0.8x price; per-entry **currency** plus a top-level **fx** table; the
+  default display currency is now CNY.
 - **0.1.0**: badge + uncached/cache-read/cache-write/output breakdown; currency switch
   and auto FX; packyapi time-of-day pricing for deepseek-flash (**peakMultiplier** /
   **peak.windows**) billed per usage increment; provider/model-scoped rates with a
