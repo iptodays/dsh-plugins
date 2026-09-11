@@ -73,15 +73,16 @@ function fakeReact() {
 
 const fakeReactDom = { createPortal: (node, container) => ({ type: "portal", node, container }) };
 
-function makeSandbox(react, extra) {
+function makeSandbox(react, extra, now) {
   const RealDate = Date;
+  const at = now === undefined ? FIXED_NOW : now;
   class FixedDate extends RealDate {
     constructor(...args) {
-      if (args.length === 0) super(FIXED_NOW);
+      if (args.length === 0) super(at);
       else super(...args);
     }
     static now() {
-      return FIXED_NOW;
+      return at;
     }
   }
   const sandbox = { console, Date: FixedDate };
@@ -106,8 +107,8 @@ function makeSandbox(react, extra) {
   return sandbox;
 }
 
-function loadInternals(react) {
-  const sandbox = makeSandbox(react);
+function loadInternals(react, now) {
+  const sandbox = makeSandbox(react, undefined, now);
   const source =
     readFileSync(join(root, "src", "client.js"), "utf8") +
     "\nexports.__test = { rateUsage, rateLedger, resolveRates, mergeConfig, formatMoney, formatTokens, formatRate, DEFAULT_CONFIG, TokenPurseView, matchCurrencyPreset, findCurrencyPreset, fetchUsdRate, parsePeakWindow, parsePeak, isPeakAt, ratesAt, emptyLedger, syncLedger, migrateConfigV1, rateSource, CURRENCY_PRESETS };\n";
@@ -115,8 +116,8 @@ function loadInternals(react) {
   return sandbox.exports.__test;
 }
 
-function loadBundle(react) {
-  const sandbox = makeSandbox(react);
+function loadBundle(react, now) {
+  const sandbox = makeSandbox(react, undefined, now);
   vm.runInContext(readFileSync(join(root, "lib", "client.js"), "utf8"), sandbox);
   return sandbox.registration;
 }
@@ -312,6 +313,15 @@ const serialized = JSON.stringify(tree);
 check("badge renders amount", serialized.indexOf("≈") !== -1 && serialized.indexOf("¥3.02") !== -1);
 check("panel carries model label", serialized.indexOf("deepseek-official / deepseek-flash") !== -1);
 check("trigger has aria label", serialized.indexOf("trigger.aria") !== -1);
+check("badge shows current off-peak mode", serialized.indexOf("peak.badgeLow") !== -1 && serialized.indexOf("modeChipOn") === -1);
+check("panel labels current pricing", serialized.indexOf("peak.current") !== -1);
+
+react.reset();
+react.seed({ 1: true });
+const peakInternals = loadInternals(react, monday0900Utc.getTime());
+const peakSerialized = JSON.stringify(peakInternals.TokenPurseView({ usage, selection, t }));
+check("badge shows current peak mode", peakSerialized.indexOf("peak.badgeHigh") !== -1 && peakSerialized.indexOf("modeChipOn") !== -1);
+check("peak render still shows amount", peakSerialized.indexOf("¥6.04") !== -1);
 
 react.reset();
 const hostless = captured.component({ useProjection: () => undefined, t });

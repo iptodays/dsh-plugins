@@ -159,7 +159,9 @@ DeepSeek official (and packyapi, which resells it) charges double during weekday
 - Ranges are evaluated in **peak.timezone**, independent of your system zone, and
   are **half-open** (12:00 sharp already counts as off-peak); they only apply on the
   listed weekdays.
-- The panel shows whether you are in **Peak ×2** or **Off-peak**, plus the windows.
+- The **badge itself shows the current mode**: peak-priced models get a small pill next to the
+  amount reading **Off** or **Peak×2** (hover for the windows), and the panel repeats it under
+  **Current pricing**.
 - Cost is split by **when each usage increment happened**: the plugin appends every
   increase of the session totals with a timestamp to
   **dsh.token-purse.ledger.v1:<sessionId>** and prices each entry with its own
@@ -235,6 +237,8 @@ otherwise refresh the page.
 
 ## Changelog
 
+- **0.1.2**: the badge shows the current peak/off-peak mode (**Off** / **Peak×2**) and the
+  panel labels it **Current pricing**.
 - **0.1.1**: built-in rates switched to DeepSeek's official CNY list price and packyapi's
   full model set (x0.8 / x0.5 groups); per-entry **currency** plus a top-level **fx** table;
   the default display currency is now CNY.

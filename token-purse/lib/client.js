@@ -209,6 +209,9 @@ window.__ModuleLoader__.load({
 		  ".TPurse_peakChip{flex:none;padding:1px 6px;border-radius:999px;background:var(--dsw-alias-fill-l2,transparent);color:var(--dsw-alias-label-secondary)}" +
 		  ".TPurse_peakChipOn{background:var(--dsw-static-yellow-500,var(--dsw-alias-fill-l2,transparent));color:var(--dsw-alias-label-primary)}" +
 		  ".TPurse_peakText{min-width:0;word-break:break-word}" +
+		  ".TPurse_peakLabel{flex:none;color:var(--dsw-alias-label-tertiary)}" +
+		  ".TPurse_modeChip{flex:none;padding:0 5px;border:1px solid var(--dsw-alias-border-l1);border-radius:999px;font-size:10px;line-height:14px;letter-spacing:.02em;white-space:nowrap;color:var(--dsw-alias-label-tertiary)}" +
+		  ".TPurse_modeChipOn{border-color:var(--dsw-static-yellow-500,#d97706);color:var(--dsw-static-yellow-500,#d97706);font-weight:600}" +
 		  ".TPurse_warnNote{margin-top:6px;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px;word-break:break-word}" +
 		  ".TPurse_sourceChip{flex:none;padding:0 6px;border-radius:999px;background:var(--dsw-alias-fill-l2,transparent);color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:15px}" +
 		  ".TPurse_sourceChipExact{color:var(--dsw-alias-label-secondary)}" +
@@ -254,6 +257,9 @@ window.__ModuleLoader__.load({
 		  peakChip: "TPurse_peakChip",
 		  peakChipOn: "TPurse_peakChipOn",
 		  peakText: "TPurse_peakText",
+		  peakLabel: "TPurse_peakLabel",
+		  modeChip: "TPurse_modeChip",
+		  modeChipOn: "TPurse_modeChipOn",
 		  warnNote: "TPurse_warnNote",
 		  sourceChip: "TPurse_sourceChip",
 		  sourceChipExact: "TPurse_sourceChipExact",
@@ -949,6 +955,14 @@ window.__ModuleLoader__.load({
 		    refreshRate(currencyPreset.code);
 		  };
 
+		  const peakInfo = rated.peak;
+		  const modeText =
+		    peakInfo === null || peakInfo === undefined
+		      ? null
+		      : peakInfo.active
+		        ? t("peak.high", { factor: peakInfo.multiplier })
+		        : t("peak.low");
+
 		  return h(
 		    "span",
 		    { className: CSS.root, ref: rootRef },
@@ -957,7 +971,7 @@ window.__ModuleLoader__.load({
 		      {
 		        type: "button",
 		        className: CSS.trigger,
-		        "aria-label": t("trigger.aria", { amount: amountText }),
+		        "aria-label": modeText === null ? t("trigger.aria", { amount: amountText }) : t("trigger.aria", { amount: amountText }) + " · " + modeText,
 		        "aria-haspopup": "dialog",
 		        "aria-expanded": open,
 		        onClick: () => {
@@ -968,6 +982,20 @@ window.__ModuleLoader__.load({
 		      },
 		      h("span", { className: CSS.approx, "aria-hidden": true }, "≈"),
 		      h("span", { className: CSS.amount }, amountText),
+		      modeText === null
+		        ? null
+		        : h(
+		            "span",
+		            {
+		              className: CSS.modeChip + (peakInfo.active ? " " + CSS.modeChipOn : ""),
+		              title:
+		                (peakInfo.active ? t("peak.modeHigh", { factor: peakInfo.multiplier }) : t("peak.modeLow")) +
+		                " · " +
+		                t("peak.note", { windows: peakInfo.windows.join(" / "), timezone: peakInfo.timezone }),
+		              "aria-hidden": true
+		            },
+		            peakInfo.active ? t("peak.badgeHigh", { factor: peakInfo.multiplier }) : t("peak.badgeLow")
+		          ),
 		      h("span", { className: open ? CSS.chevron + " " + CSS.chevronOpen : CSS.chevron, "aria-hidden": true }, "▾")
 		    ),
 		    open
@@ -1028,6 +1056,7 @@ window.__ModuleLoader__.load({
 		            : h(
 		                "div",
 		                { className: CSS.peakNote },
+		                h("span", { className: CSS.peakLabel }, t("peak.current")),
 		                h(
 		                  "span",
 		                  { className: CSS.peakChip + (rated.peak.active ? " " + CSS.peakChipOn : "") },
@@ -1183,6 +1212,11 @@ window.__ModuleLoader__.load({
 		  "currency.manual": "该币种无法自动获取，请手动填写",
 		  "peak.high": "高峰 ×{factor}",
 		  "peak.low": "低峰",
+		  "peak.current": "当前计费",
+		  "peak.badgeHigh": "峰×{factor}",
+		  "peak.badgeLow": "谷",
+		  "peak.modeHigh": "当前处于高峰时段，单价 ×{factor}",
+		  "peak.modeLow": "当前处于低峰（空闲）时段",
 		  "peak.note": "{windows} · {timezone}",
 		  "rate.unpriced": "未配置 {model} 的费率，当前按通用兜底价估算——点下方「调整费率」补上。",
 		  "rate.source.provider": "专属费率",
@@ -1218,6 +1252,11 @@ window.__ModuleLoader__.load({
 		  "currency.manual": "Can't auto-fetch this currency — enter it manually",
 		  "peak.high": "Peak ×{factor}",
 		  "peak.low": "Off-peak",
+		  "peak.current": "Current pricing",
+		  "peak.badgeHigh": "Peak×{factor}",
+		  "peak.badgeLow": "Off",
+		  "peak.modeHigh": "Currently in peak hours, unit price ×{factor}",
+		  "peak.modeLow": "Currently off-peak (idle) hours",
 		  "peak.note": "{windows} · {timezone}",
 		  "rate.unpriced": "No rate configured for {model} — estimating with the generic fallback. Add it under Edit rates.",
 		  "rate.source.provider": "Provider rate",
