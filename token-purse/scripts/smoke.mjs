@@ -230,6 +230,10 @@ check("migrated config gains packyapi flash", Math.abs(migrated.models["packyapi
 /* ── 1f. provider 专属费率 ──────────────────────────────────────────── */
 
 check("provider/model wins over model", internals.resolveRates(config, "deepseek-flash", "packyapi").input === 0.8 && internals.rateSource(config, "deepseek-flash", "packyapi") === "provider");
+check("packyapi v4-flash 5折", internals.resolveRates(config, "deepseek-v4-flash", "packyapi").input === 0.5 && internals.resolveRates(config, "deepseek-v4-flash", "packyapi").output === 2);
+check("packyapi v4-flash-vision-exp 8折 exact", internals.resolveRates(config, "deepseek-v4-flash-vision-exp", "packyapi").input === 0.8 && internals.rateSource(config, "deepseek-v4-flash-vision-exp", "packyapi") === "provider");
+check("packyapi v4-pro 5折", internals.resolveRates(config, "deepseek-v4-pro", "packyapi").input === 2.25 && internals.resolveRates(config, "deepseek-v4-pro", "packyapi").cacheRead === 0.075);
+check("official v4-pro full price", internals.resolveRates(config, "deepseek-v4-pro", "deepseek-official").input === 4.5);
 check("official provider has its own rate", internals.rateSource(config, "deepseek-flash", "deepseek-official") === "provider" && internals.resolveRates(config, "deepseek-flash", "deepseek-official").input === 1);
 check("unknown provider -> fallback (CNY)", internals.rateSource(config, "deepseek-flash", "some-gateway") === "fallback" && internals.resolveRates(config, "some-model", "some-gateway").currency === "CNY");
 check("model-only key matches any provider", internals.rateSource(modelOnlyConfig, "deepseek-v4-flash-exp", "packyapi") === "substring" && internals.rateSource(modelOnlyConfig, "deepseek-v4-pro", "some-gateway") === "model");

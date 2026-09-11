@@ -69,13 +69,20 @@ TokenPurse 是一个 DSH Web 客户端插件。它在输入框下方的会话统
 内置费率来自两个**可溯源**的来源，单位是**人民币 / 百万 token**；每条费率自带
 **currency**（默认 CNY）：
 
-    deepseek-official/deepseek-flash    input 1.00   cacheRead 0.020   cacheWrite 1.00   output 4.00    peakMultiplier 2
-    deepseek-official/deepseek-v4-flash input 1.00   cacheRead 0.020   cacheWrite 1.00   output 4.00    peakMultiplier 2
-    deepseek-official/deepseek-v4-pro   input 4.50   cacheRead 0.150   cacheWrite 4.50   output 13.50   peakMultiplier 2
-    packyapi/deepseek-flash             input 0.80   cacheRead 0.016   cacheWrite 0.80   output 3.20    peakMultiplier 2
+    # DeepSeek 官方
+    deepseek-official/deepseek-flash            input 1.00   cacheRead 0.020   cacheWrite 1.00   output 4.00    peakMultiplier 2
+    deepseek-official/deepseek-v4-flash         input 1.00   cacheRead 0.020   cacheWrite 1.00   output 4.00    peakMultiplier 2
+    deepseek-official/deepseek-v4-pro           input 4.50   cacheRead 0.150   cacheWrite 4.50   output 13.50   peakMultiplier 2
+
+    # packyapi（官方价 × 分组倍率）
+    packyapi/deepseek-flash             8折    input 0.80   cacheRead 0.016   cacheWrite 0.80   output 3.20    peakMultiplier 2
+    packyapi/deepseek-v4-flash-vision-exp 8折   input 0.80   cacheRead 0.016   cacheWrite 0.80   output 3.20    peakMultiplier 2
+    packyapi/deepseek-v4-flash          5折    input 0.50   cacheRead 0.010   cacheWrite 0.50   output 2.00    peakMultiplier 2
+    packyapi/deepseek-v4-pro            5折    input 2.25   cacheRead 0.075   cacheWrite 2.25   output 6.75    peakMultiplier 2
 
 - **deepseek-official** 是 DeepSeek 官方价（api-docs.deepseek.com/zh-cn/quick_start/pricing）。
-- **packyapi** 走官方渠道，价格 = 官方价 × 分组倍率（这里是 0.8，即 8 折）。
+- **packyapi** 按官方人民币价打折：deepseek-officially 组 8 折、deepseek-sale 组 5 折。
+  它页面用 `$` 符号显示，但数值就是官方「元」价 × 倍率（如 v4-pro 官方 ¥4.5 → 页面 $2.25），实际按人民币计。
 - 官方高峰 = 空闲 ×2，时段为北京时间周一至周五 09:00–12:00、14:00–18:00。
 - 官方已把 `deepseek-v4-flash` / `-vision-exp` 的请求转由 V4.1-Flash 提供服务并按 Flash 计费；
   `deepseek-v4-pro` 计划 2026-09-14 12:00 后同样路由到 V4.1-Flash。
@@ -204,8 +211,8 @@ DeepSeek 官方（以及走官方渠道的 packyapi）都是：工作日 **09:00
 
 ## 更新记录
 
-- **0.1.1**：内置费率换成 DeepSeek 官方人民币价与 packyapi 0.8 折价；费率支持自带
-  币种（**currency**）与顶层 **fx** 换算表；显示币种默认改为人民币。
+- **0.1.1**：内置费率换成 DeepSeek 官方人民币价，并补齐 packyapi 四个模型（8 折 / 5 折）；
+  费率支持自带币种（**currency**）与顶层 **fx** 换算表；显示币种默认改为人民币。
 - **0.1.0**：徽标 + 输入/缓存命中/缓存写入/输出四桶明细；币种切换与自动汇率；
   **packyapi/deepseek-flash** 分时价（**peakMultiplier** / **peak.windows**）并按
   每笔用量发生时刻分段计价；费率按 **provider/model** 区分，面板标注来源。

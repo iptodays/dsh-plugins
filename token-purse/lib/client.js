@@ -45,11 +45,19 @@ window.__ModuleLoader__.load({
 		 *         packyapi 官方渠道 = 官方价 × 分组倍率 0.8（docs.packyapi.com/docs/token）。
 		 */
 		const DEFAULT_MODELS = {
-		  /* packyapi：官方空闲价 ×0.8，高峰同样翻倍。 */
+		  /*
+		   * packyapi：官方人民币价 × 分组倍率。数据源是它的定价页：
+		   * deepseek-officially 组 8 折，deepseek-sale 组 5 折，都带分时定价。
+		   * 注意它页面用 $ 显示，但数值 = 官方「元」价 × 倍率（例：v4-pro 官方 ¥4.5，5 折后 $2.25），
+		   * 官方英文页同款价格是 $0.66，所以 packyapi 这里是人民币。
+		   */
 		  "packyapi/deepseek-flash": { currency: "CNY", input: 0.8, cacheRead: 0.016, cacheWrite: 0.8, output: 3.2, peakMultiplier: 2 },
-		  /* 官方 deepseek-flash（V4.1-Flash）：空闲 ¥1 / 缓存命中 ¥0.02 / 输出 ¥4，高峰翻倍。 */
+		  "packyapi/deepseek-v4-flash": { currency: "CNY", input: 0.5, cacheRead: 0.01, cacheWrite: 0.5, output: 2, peakMultiplier: 2 },
+		  "packyapi/deepseek-v4-flash-vision-exp": { currency: "CNY", input: 0.8, cacheRead: 0.016, cacheWrite: 0.8, output: 3.2, peakMultiplier: 2 },
+		  "packyapi/deepseek-v4-pro": { currency: "CNY", input: 2.25, cacheRead: 0.075, cacheWrite: 2.25, output: 6.75, peakMultiplier: 2 },
+		  /* 官方 deepseek-flash（V4.1-Flash）：空闲 ¥1 / 缓存命中 ¥0.02 / 输出 ¥4，高峰 = 空闲 ×2。 */
 		  "deepseek-official/deepseek-flash": { currency: "CNY", input: 1, cacheRead: 0.02, cacheWrite: 1, output: 4, peakMultiplier: 2 },
-		  /* 旧模型名 deepseek-v4-flash / deepseek-v4-flash-vision-exp 仍可调用，实际由 V4.1-Flash 服务并按 Flash 计费。 */
+		  /* 旧模型名 deepseek-v4-flash / -vision-exp 仍可调用，由 V4.1-Flash 服务并按 Flash 计费。 */
 		  "deepseek-official/deepseek-v4-flash": { currency: "CNY", input: 1, cacheRead: 0.02, cacheWrite: 1, output: 4, peakMultiplier: 2 },
 		  /* 官方 deepseek-v4-pro：空闲 ¥4.5 / ¥0.15 / ¥13.5；官方计划 2026-09-14 12:00 后路由到 V4.1-Flash。 */
 		  "deepseek-official/deepseek-v4-pro": { currency: "CNY", input: 4.5, cacheRead: 0.15, cacheWrite: 4.5, output: 13.5, peakMultiplier: 2 }

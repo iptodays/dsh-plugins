@@ -75,13 +75,21 @@ A ready-made snippet ships as **cordis.patch.yml**.
 Built-in rates come from two **traceable** sources and are quoted in **CNY per
 million tokens**; each entry carries its own **currency** (CNY by default):
 
-    deepseek-official/deepseek-flash    input 1.00   cacheRead 0.020   cacheWrite 1.00   output 4.00    peakMultiplier 2
-    deepseek-official/deepseek-v4-flash input 1.00   cacheRead 0.020   cacheWrite 1.00   output 4.00    peakMultiplier 2
-    deepseek-official/deepseek-v4-pro   input 4.50   cacheRead 0.150   cacheWrite 4.50   output 13.50   peakMultiplier 2
-    packyapi/deepseek-flash             input 0.80   cacheRead 0.016   cacheWrite 0.80   output 3.20    peakMultiplier 2
+    # DeepSeek official
+    deepseek-official/deepseek-flash            input 1.00   cacheRead 0.020   cacheWrite 1.00   output 4.00    peakMultiplier 2
+    deepseek-official/deepseek-v4-flash         input 1.00   cacheRead 0.020   cacheWrite 1.00   output 4.00    peakMultiplier 2
+    deepseek-official/deepseek-v4-pro           input 4.50   cacheRead 0.150   cacheWrite 4.50   output 13.50   peakMultiplier 2
+
+    # packyapi (official CNY x group multiplier)
+    packyapi/deepseek-flash             x0.8    input 0.80   cacheRead 0.016   cacheWrite 0.80   output 3.20    peakMultiplier 2
+    packyapi/deepseek-v4-flash-vision-exp x0.8  input 0.80   cacheRead 0.016   cacheWrite 0.80   output 3.20    peakMultiplier 2
+    packyapi/deepseek-v4-flash          x0.5    input 0.50   cacheRead 0.010   cacheWrite 0.50   output 2.00    peakMultiplier 2
+    packyapi/deepseek-v4-pro            x0.5    input 2.25   cacheRead 0.075   cacheWrite 2.25   output 6.75    peakMultiplier 2
 
 - **deepseek-official** is DeepSeek's list price (api-docs.deepseek.com/zh-cn/quick_start/pricing).
-- **packyapi** resells the official channel at list price x its group multiplier (0.8 here).
+- **packyapi** discounts the official CNY list: x0.8 in the deepseek-officially group and
+  x0.5 in the deepseek-sale group. Its page renders a `$` glyph, but the numbers are the
+  official yuan price x multiplier (e.g. v4-pro list ¥4.5 -> $2.25), i.e. billed in CNY.
 - Peak = 2x off-peak, weekdays 09:00-12:00 and 14:00-18:00 Beijing time.
 - The official docs now serve deepseek-v4-flash / -vision-exp from V4.1-Flash and bill
   them at Flash prices; deepseek-v4-pro is scheduled to route there after 2026-09-14 12:00.
@@ -227,9 +235,9 @@ otherwise refresh the page.
 
 ## Changelog
 
-- **0.1.1**: built-in rates switched to DeepSeek's official CNY list price and
-  packyapi's 0.8x price; per-entry **currency** plus a top-level **fx** table; the
-  default display currency is now CNY.
+- **0.1.1**: built-in rates switched to DeepSeek's official CNY list price and packyapi's
+  full model set (x0.8 / x0.5 groups); per-entry **currency** plus a top-level **fx** table;
+  the default display currency is now CNY.
 - **0.1.0**: badge + uncached/cache-read/cache-write/output breakdown; currency switch
   and auto FX; packyapi time-of-day pricing for deepseek-flash (**peakMultiplier** /
   **peak.windows**) billed per usage increment; provider/model-scoped rates with a
