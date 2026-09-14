@@ -67,6 +67,7 @@ const DEFAULT_CONFIG = {
   currency: { code: "CNY", symbol: "¥", perUsd: 7.1, auto: false },
   fx: { USD: 1, CNY: 7.1 },
   peak: DEFAULT_PEAK,
+  ui: { peakSplit: true },
   models: DEFAULT_MODELS
 };
 
@@ -205,6 +206,9 @@ const CSS_TEXT =
   ".TPurse_peakLabel{flex:none;color:var(--dsw-alias-label-tertiary)}" +
   ".TPurse_modeChip{flex:none;padding:0 5px;border:1px solid var(--dsw-alias-border-l1);border-radius:999px;font-size:10px;line-height:14px;letter-spacing:.02em;white-space:nowrap;color:var(--dsw-alias-label-tertiary)}" +
   ".TPurse_modeChipOn{border-color:var(--dsw-static-yellow-500,#d97706);color:var(--dsw-static-yellow-500,#d97706);font-weight:600}" +
+  ".TPurse_peakToggle{flex:none;margin-left:auto;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;cursor:pointer;color:var(--dsw-alias-label-tertiary)}" +
+  ".TPurse_peakToggle input{margin:0;cursor:pointer}" +
+  ".TPurse_split{margin-top:6px;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px;font-variant-numeric:tabular-nums}" +
   ".TPurse_warnNote{margin-top:6px;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px;word-break:break-word}" +
   ".TPurse_sourceChip{flex:none;padding:0 6px;border-radius:999px;background:var(--dsw-alias-fill-l2,transparent);color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:15px}" +
   ".TPurse_sourceChipExact{color:var(--dsw-alias-label-secondary)}" +
@@ -253,6 +257,8 @@ const CSS = {
   peakLabel: "TPurse_peakLabel",
   modeChip: "TPurse_modeChip",
   modeChipOn: "TPurse_modeChipOn",
+  peakToggle: "TPurse_peakToggle",
+  split: "TPurse_split",
   warnNote: "TPurse_warnNote",
   sourceChip: "TPurse_sourceChip",
   sourceChipExact: "TPurse_sourceChipExact",
@@ -318,6 +324,12 @@ function normalizePeak(raw) {
   return { timezone, windows };
 }
 
+/** 界面偏好：peakSplit 控制面板里是否显示高峰/低峰金额拆分。 */
+function normalizeUi(raw) {
+  const source = raw !== null && raw !== undefined && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  return { peakSplit: source.peakSplit !== false };
+}
+
 function cloneConfig(config) {
   const models = {};
   for (const key of Object.keys(config.models)) models[key] = normalizeRates(config.models[key]);
@@ -330,6 +342,7 @@ function cloneConfig(config) {
     },
     fx: normalizeFx(config.fx),
     peak: normalizePeak(config.peak),
+    ui: normalizeUi(config.ui),
     models
   };
 }
@@ -370,6 +383,10 @@ function mergeConfig(base, patch) {
   if (fx !== null && fx !== undefined && typeof fx === "object" && !Array.isArray(fx)) {
     const normalized = normalizeFx(fx);
     for (const code of Object.keys(normalized)) merged.fx[code] = normalized[code];
+  }
+  const ui = patch.ui;
+  if (ui !== null && ui !== undefined && typeof ui === "object" && !Array.isArray(ui)) {
+    if (typeof ui.peakSplit === "boolean") merged.ui.peakSplit = ui.peakSplit;
   }
   return merged;
 }
@@ -706,13 +723,22 @@ function usdBreakdown(totals, selection, config, ledger, at) {
   const peak = parsePeak(config);
   const fx = fxPerUsd(config);
   const usd = zeroBuckets();
+  const split = { peak: 0, off: 0 };
   const accumulate = (buckets, entryProvider, entryModel, moment) => {
     const rates = ratesAt(config, entryModel === null ? modelId : entryModel, moment, peak, entryProvider === null || entryProvider === undefined ? providerId : entryProvider);
     const cost = costBuckets(buckets, rates);
     /* 费率自带币种 → 美元：除以「该币种每 1 美元的数额」；显示时再乘 currency.perUsd。 */
     const ratePerUsd = toNumber(fx[rates.currency], 1);
     const factor = ratePerUsd > 0 ? 1 / ratePerUsd : 1;
-    for (const key of BUCKETS) usd[key] += cost[key] * factor;
+    const inPeak = peak !== null && rates.peakMultiplier > 1 && isPeakAt(new Date(moment), peak);
+    let subtotal = 0;
+    for (const key of BUCKETS) {
+      const value = cost[key] * factor;
+      usd[key] += value;
+      subtotal += value;
+    }
+    if (inPeak) split.peak += subtotal;
+    else split.off += subtotal;
   };
   if (ledger !== null && ledger !== undefined) {
     if (ledger.base !== null) accumulate(ledger.base.b, ledger.base.provider, ledger.base.model, ledger.base.at);
@@ -737,6 +763,7 @@ function usdBreakdown(totals, selection, config, ledger, at) {
   const active = peak !== null && rates.peakMultiplier > 1 && isPeakAt(new Date(at), peak);
   return {
     usd,
+    split,
     source: rateSource(config, modelId, providerId),
     peak:
       peak === null || rates.peakMultiplier <= 1
@@ -755,7 +782,7 @@ function rateLedger(ledger, usage, selection, config, at) {
   if (totalOf(totals) <= 0) return null;
   const moment = at === undefined ? Date.now() : at;
   const model = pickModel(selection);
-  const { usd, peak, source } = usdBreakdown(totals, selection, config, ledger, moment);
+  const { usd, split, peak, source } = usdBreakdown(totals, selection, config, ledger, moment);
   const rows = [];
   let amount = 0;
   for (const definition of BUCKET_DEFINITIONS) {
@@ -771,7 +798,16 @@ function rateLedger(ledger, usage, selection, config, at) {
       : typeof model.provider === "string" && model.provider.length > 0
         ? model.provider + " / " + model.model
         : model.model;
-  return { rows, tokens: totalOf(totals), amount, modelLabel, source, peak };
+  const perUsd = config.currency.perUsd;
+  return {
+    rows,
+    tokens: totalOf(totals),
+    amount,
+    modelLabel,
+    source,
+    peak,
+    split: { peak: split.peak * perUsd, off: split.off * perUsd }
+  };
 }
 
 /* ──────────────────────────────── 格式化 ──────────────────────────────── */
@@ -910,6 +946,11 @@ function TokenPurseView({ usage, selection, t, sessionId }) {
     writeConfig(merged);
     setConfig(merged);
   };
+  const updateUi = (patch) => {
+    const merged = mergeConfig(config, { ui: patch });
+    writeConfig(merged);
+    setConfig(merged);
+  };
   const currencyPreset = findCurrencyPreset(config.currency.code, symbol);
 
   const refreshRate = (codeOverride) => {
@@ -949,6 +990,13 @@ function TokenPurseView({ usage, selection, t, sessionId }) {
   };
 
   const peakInfo = rated.peak;
+  const splitParts =
+    config.ui.peakSplit === true && peakInfo !== null && peakInfo !== undefined
+      ? [
+          rated.split.peak > 1e-9 ? t("peak.splitPeak", { amount: formatMoney(rated.split.peak, symbol) }) : null,
+          rated.split.off > 1e-9 ? t("peak.splitOff", { amount: formatMoney(rated.split.off, symbol) }) : null
+        ].filter((part) => part !== null)
+      : [];
   const modeText =
     peakInfo === null || peakInfo === undefined
       ? null
@@ -1047,15 +1095,30 @@ function TokenPurseView({ usage, selection, t, sessionId }) {
           rated.peak === null || rated.peak === undefined
             ? null
             : h(
-                "div",
-                { className: CSS.peakNote },
-                h("span", { className: CSS.peakLabel }, t("peak.current")),
+                React.Fragment,
+                null,
                 h(
-                  "span",
-                  { className: CSS.peakChip + (rated.peak.active ? " " + CSS.peakChipOn : "") },
-                  rated.peak.active ? t("peak.high", { factor: rated.peak.multiplier }) : t("peak.low")
+                  "div",
+                  { className: CSS.peakNote },
+                  h("span", { className: CSS.peakLabel }, t("peak.current")),
+                  h(
+                    "span",
+                    { className: CSS.peakChip + (rated.peak.active ? " " + CSS.peakChipOn : "") },
+                    rated.peak.active ? t("peak.high", { factor: rated.peak.multiplier }) : t("peak.low")
+                  ),
+                  h("span", { className: CSS.peakText }, t("peak.note", { windows: rated.peak.windows.join(" / "), timezone: rated.peak.timezone })),
+                  h(
+                    "label",
+                    { className: CSS.peakToggle },
+                    h("input", {
+                      type: "checkbox",
+                      checked: config.ui.peakSplit === true,
+                      onChange: () => updateUi({ peakSplit: config.ui.peakSplit !== true })
+                    }),
+                    h("span", null, t("peak.splitToggle"))
+                  )
                 ),
-                h("span", { className: CSS.peakText }, t("peak.note", { windows: rated.peak.windows.join(" / "), timezone: rated.peak.timezone }))
+                splitParts.length > 0 ? h("div", { className: CSS.split }, splitParts.join(" · ")) : null
               ),
           h(
             "div",
@@ -1210,6 +1273,9 @@ const zh = {
   "peak.badgeLow": "谷",
   "peak.modeHigh": "当前处于高峰时段，单价 ×{factor}",
   "peak.modeLow": "当前处于低峰（空闲）时段",
+  "peak.splitToggle": "拆分",
+  "peak.splitPeak": "高峰 {amount}",
+  "peak.splitOff": "低峰 {amount}",
   "peak.note": "{windows} · {timezone}",
   "rate.unpriced": "未配置 {model} 的费率，当前按通用兜底价估算——点下方「调整费率」补上。",
   "rate.source.provider": "专属费率",
@@ -1250,6 +1316,9 @@ const en = {
   "peak.badgeLow": "Off",
   "peak.modeHigh": "Currently in peak hours, unit price ×{factor}",
   "peak.modeLow": "Currently off-peak (idle) hours",
+  "peak.splitToggle": "Split",
+  "peak.splitPeak": "Peak {amount}",
+  "peak.splitOff": "Off-peak {amount}",
   "peak.note": "{windows} · {timezone}",
   "rate.unpriced": "No rate configured for {model} — estimating with the generic fallback. Add it under Edit rates.",
   "rate.source.provider": "Provider rate",

@@ -118,6 +118,7 @@ Config shape:
     {
       "currency": { "code": "CNY", "symbol": "¥", "perUsd": 7.2, "auto": true },
       "fx": { "USD": 1, "CNY": 7.2 },
+      "ui": { "peakSplit": true },
       "peak": {
         "timezone": "Asia/Shanghai",
         "windows": ["Mon-Fri 09:00-12:00", "Mon-Fri 14:00-18:00"]
@@ -136,6 +137,8 @@ Config shape:
 - **fx**: units per 1 USD for each currency, used to convert a rate entry's own
   currency into the display one. The display currency itself follows
   **currency.perUsd**. Ignore it if every entry is in CNY.
+- **ui.peakSplit**: state of the panel's **Split** switch (default **true**). Turn it off to
+  hide the peak/off-peak amount split.
 - **peak.timezone**: IANA zone, e.g. **Asia/Shanghai**. **peak.windows** is a list of
   weekday-and-time ranges, accepting **Mon-Fri**, **Sat,Sun** and **\***. Entries
   that fail to parse are dropped; if none parse, there is no peak pricing.
@@ -162,6 +165,9 @@ DeepSeek official (and packyapi, which resells it) charges double during weekday
 - The **badge itself shows the current mode**: peak-priced models get a small pill next to the
   amount reading **Off** or **Peak×2** (hover for the windows), and the panel repeats it under
   **Current pricing**.
+- A **Split** switch in the panel adds a line breaking the total down by bracket, e.g.
+  **Peak ¥1.60 · Off-peak ¥0.80** (only non-zero sides are shown). This summarises the
+  **time-segmented** calculation; the preference lives in **ui.peakSplit**.
 - Cost is split by **when each usage increment happened**: the plugin appends every
   increase of the session totals with a timestamp to
   **dsh.token-purse.ledger.v1:<sessionId>** and prices each entry with its own
@@ -237,6 +243,8 @@ otherwise refresh the page.
 
 ## Changelog
 
+- **0.1.3**: optional peak/off-peak amount split, toggled by **Split** in the panel and stored
+  as **ui.peakSplit**.
 - **0.1.2**: the badge shows the current peak/off-peak mode (**Off** / **Peak×2**) and the
   panel labels it **Current pricing**.
 - **0.1.1**: built-in rates switched to DeepSeek's official CNY list price and packyapi's

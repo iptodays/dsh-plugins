@@ -158,6 +158,9 @@ const merged = internals.mergeConfig(config, {
 });
 check("mergeConfig currency", merged.currency.symbol === "y" && merged.currency.perUsd === 7.2);
 check("mergeConfig adds model", merged.models["my-model"].input === 1 && merged.models["my-model"].cacheRead === 1);
+check("ui.peakSplit defaults on", internals.mergeConfig(config, {}).ui.peakSplit === true);
+check("ui.peakSplit can be disabled", internals.mergeConfig(config, { ui: { peakSplit: false } }).ui.peakSplit === false);
+check("ui.peakSplit ignores junk", internals.mergeConfig(config, { ui: { peakSplit: "no" } }).ui.peakSplit === true);
 
 check("matchCurrencyPreset CNY", internals.matchCurrencyPreset("¥", 7.2).code === "CNY");
 check("matchCurrencyPreset JPY distinct", internals.matchCurrencyPreset("¥", 150).code === "JPY");
@@ -216,6 +219,8 @@ splitLedger = internals.syncLedger(splitLedger, { uncachedInputTokens: 2000000 }
 const splitRated = internals.rateLedger(splitLedger, { uncachedInputTokens: 2000000 }, { next: { model: "deepseek-flash" } }, ledgerConfig, monday0900Utc.getTime());
 check("ledger prices each bracket ($1 off + $2 peak = $3)", Math.abs(splitRated.amount - 3) < 1e-9);
 check("rateLedger reports active peak", splitRated.peak.active === true && splitRated.peak.multiplier === 2);
+check("split off/peak (1 + 2)", Math.abs(splitRated.split.off - 1) < 1e-9 && Math.abs(splitRated.split.peak - 2) < 1e-9);
+check("split sums to total", Math.abs(splitRated.split.off + splitRated.split.peak - splitRated.amount) < 1e-9);
 
 /* ── 1e. 旧配置迁移 ─────────────────────────────────────────────────── */
 
@@ -315,12 +320,14 @@ check("panel carries model label", serialized.indexOf("deepseek-official / deeps
 check("trigger has aria label", serialized.indexOf("trigger.aria") !== -1);
 check("badge shows current off-peak mode", serialized.indexOf("peak.badgeLow") !== -1 && serialized.indexOf("modeChipOn") === -1);
 check("panel labels current pricing", serialized.indexOf("peak.current") !== -1);
+check("panel renders off-peak split + switch", serialized.indexOf("peak.splitOff") !== -1 && serialized.indexOf("peak.splitToggle") !== -1 && serialized.indexOf("peak.splitPeak") === -1);
 
 react.reset();
 react.seed({ 1: true });
 const peakInternals = loadInternals(react, monday0900Utc.getTime());
 const peakSerialized = JSON.stringify(peakInternals.TokenPurseView({ usage, selection, t }));
 check("badge shows current peak mode", peakSerialized.indexOf("peak.badgeHigh") !== -1 && peakSerialized.indexOf("modeChipOn") !== -1);
+check("peak split shows only the peak side", peakSerialized.indexOf("peak.splitPeak") !== -1 && peakSerialized.indexOf("peak.splitOff") === -1);
 check("peak render still shows amount", peakSerialized.indexOf("¥6.04") !== -1);
 
 react.reset();
