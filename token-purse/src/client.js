@@ -416,14 +416,41 @@ function migrateConfigV1(parsed) {
   return parsed;
 }
 
+/** 0.1.0 的配置没有 currency.code 字段，那会儿默认币种是美元。 */
+function legacyCurrencyConfig(parsed) {
+  if (parsed === null || parsed === undefined || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+  const currency = parsed.currency;
+  if (currency === null || currency === undefined || typeof currency !== "object" || Array.isArray(currency)) return false;
+  return !(typeof currency.code === "string" && currency.code.length > 0);
+}
+
+/** 把 0.1.0 的默认币种一次性升到人民币，用户自己的 auto 开关保留。 */
+function migrateLegacyCurrency(parsed) {
+  if (!legacyCurrencyConfig(parsed)) return parsed;
+  const auto = parsed.currency.auto === true;
+  parsed.currency = {
+    code: DEFAULT_CONFIG.currency.code,
+    symbol: DEFAULT_CONFIG.currency.symbol,
+    perUsd: DEFAULT_CONFIG.currency.perUsd,
+    auto
+  };
+  return parsed;
+}
+
 function readConfig() {
   const base = cloneConfig(DEFAULT_CONFIG);
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored !== null && stored !== undefined) return mergeConfig(base, JSON.parse(stored));
-    const legacy = window.localStorage.getItem(STORAGE_KEY_V1);
-    if (legacy !== null && legacy !== undefined) {
-      const migrated = mergeConfig(base, migrateConfigV1(JSON.parse(legacy)));
+    if (stored !== null && stored !== undefined) {
+      const parsed = JSON.parse(stored);
+      const stale = legacyCurrencyConfig(parsed);
+      const merged = mergeConfig(base, migrateLegacyCurrency(parsed));
+      if (stale) writeConfig(merged);
+      return merged;
+    }
+    const legacyStored = window.localStorage.getItem(STORAGE_KEY_V1);
+    if (legacyStored !== null && legacyStored !== undefined) {
+      const migrated = mergeConfig(base, migrateLegacyCurrency(migrateConfigV1(JSON.parse(legacyStored))));
       writeConfig(migrated);
       return migrated;
     }
@@ -1497,7 +1524,7 @@ const zh = {
   "bucket.cacheWrite": "缓存写入",
   "bucket.output": "输出",
   "rates.edit": "调整费率",
-  "rates.hint": "以 JSON 覆盖默认费率（美元 / 百万 token）。",
+  "rates.hint": "以 JSON 覆盖默认费率。数值是「每百万 token」，币种由每条费率自己的 currency 决定（默认人民币）。",
   "rates.save": "保存",
   "rates.reset": "恢复默认",
   "rates.invalid": "JSON 格式有误，请检查后重试。",
@@ -1542,7 +1569,7 @@ const en = {
   "bucket.cacheWrite": "Cache write",
   "bucket.output": "Output",
   "rates.edit": "Edit rates",
-  "rates.hint": "Override default rates with JSON (USD per million tokens).",
+  "rates.hint": "Override default rates with JSON. Values are per million tokens in each entry's own currency (CNY by default).",
   "rates.save": "Save",
   "rates.reset": "Reset",
   "rates.invalid": "Invalid JSON — please check and retry.",

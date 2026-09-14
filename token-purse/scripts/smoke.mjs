@@ -111,7 +111,7 @@ function loadInternals(react, now, extra) {
   const sandbox = makeSandbox(react, extra, now);
   const source =
     readFileSync(join(root, "src", "client.js"), "utf8") +
-    "\nexports.__test = { rateUsage, rateLedger, resolveRates, mergeConfig, formatMoney, formatTokens, formatRate, DEFAULT_CONFIG, TokenPurseView, matchCurrencyPreset, findCurrencyPreset, fetchUsdRate, parsePeakWindow, parsePeak, isPeakAt, ratesAt, emptyLedger, syncLedger, migrateConfigV1, rateSource, CURRENCY_PRESETS, localDayKey, sessionModelRows, formatModelLabel, sharePercent, sessionDayRows, mergeSessionDayRows, dailyStats, normalizeDaily, emptyDaily, formatDayKey };\n";
+    "\nexports.__test = { rateUsage, rateLedger, resolveRates, mergeConfig, formatMoney, formatTokens, formatRate, DEFAULT_CONFIG, TokenPurseView, matchCurrencyPreset, findCurrencyPreset, fetchUsdRate, parsePeakWindow, parsePeak, isPeakAt, ratesAt, emptyLedger, syncLedger, migrateConfigV1, rateSource, CURRENCY_PRESETS, localDayKey, sessionModelRows, formatModelLabel, sharePercent, legacyCurrencyConfig, migrateLegacyCurrency, readConfig, sessionDayRows, mergeSessionDayRows, dailyStats, normalizeDaily, emptyDaily, formatDayKey };\n";
   vm.runInContext(source, sandbox);
   return sandbox.exports.__test;
 }
@@ -133,6 +133,20 @@ const modelOnlyConfig = internals.mergeConfig(config, {
   models: { "deepseek-v4-pro": { currency: "CNY", input: 4.5 }, "deepseek-v4-flash": { currency: "CNY", input: 1 } }
 });
 
+check("default currency is CNY", internals.DEFAULT_CONFIG.currency.code === "CNY" && internals.DEFAULT_CONFIG.currency.symbol === "¥" && internals.DEFAULT_CONFIG.currency.perUsd > 1);
+check(
+  "legacyCurrencyConfig spots 0.1.0 configs",
+  internals.legacyCurrencyConfig({ currency: { symbol: "$", perUsd: 1 } }) === true &&
+    internals.legacyCurrencyConfig({ currency: { code: "USD", symbol: "$", perUsd: 1 } }) === false &&
+    internals.legacyCurrencyConfig({ models: {} }) === false
+);
+const migratedCurrency = internals.migrateLegacyCurrency({ currency: { symbol: "$", perUsd: 1, auto: true } });
+check(
+  "migrateLegacyCurrency -> CNY",
+  migratedCurrency.currency.code === "CNY" && migratedCurrency.currency.symbol === "¥" && migratedCurrency.currency.perUsd === 7.1 && migratedCurrency.currency.auto === true
+);
+const keptCurrency = internals.migrateLegacyCurrency({ currency: { code: "USD", symbol: "$", perUsd: 1 } });
+check("migrateLegacyCurrency keeps explicit USD", keptCurrency.currency.code === "USD" && keptCurrency.currency.symbol === "$");
 check("formatMoney(0.28) -> $0.28", internals.formatMoney(0.28, "$") === "$0.28");
 check("formatMoney(0.0123) -> $0.0123", internals.formatMoney(0.0123, "$") === "$0.0123");
 check("formatMoney(12.5) -> $12.50", internals.formatMoney(12.5, "$") === "$12.50");
@@ -408,6 +422,15 @@ react.seed({ 1: true });
 const modelSerialized = JSON.stringify(modelInternals.TokenPurseView({ usage, selection, t }));
 check("panel renders by-model breakdown", modelSerialized.indexOf("breakdown.byModel") !== -1 && modelSerialized.indexOf("packyapi / deepseek-v4-pro") !== -1);
 check("by-model rows carry a share bar", modelSerialized.indexOf("TPurse_shareFill") !== -1 && modelSerialized.indexOf("TPurse_breakAmount") !== -1);
+
+const legacyCurrencyInternals = loadInternals(react, undefined, (sandbox) => {
+  sandbox.window.localStorage.getItem = (key) => (key === "dsh.token-purse.config.v2" ? JSON.stringify({ currency: { symbol: "$", perUsd: 1, auto: false }, models: {} }) : null);
+});
+react.reset();
+react.seed({ 1: true });
+const legacyCurrencySerialized = JSON.stringify(legacyCurrencyInternals.TokenPurseView({ usage, selection, t }));
+check("legacy USD config renders as CNY", legacyCurrencySerialized.indexOf("¥3.02") !== -1 && legacyCurrencySerialized.indexOf("$3.02") === -1);
+check("readConfig migrates 0.1.0 USD to CNY", legacyCurrencyInternals.readConfig().currency.code === "CNY" && legacyCurrencyInternals.readConfig().currency.symbol === "¥");
 
 const dailyInternals = loadInternals(react, undefined, (sandbox) => {
   sandbox.window.localStorage.getItem = (key) => (key === "dsh.token-purse.daily.v1" ? JSON.stringify(DAILY_SEED) : null);

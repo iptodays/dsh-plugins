@@ -270,6 +270,8 @@ otherwise refresh the page.
 
 ## Changelog
 
+- **0.1.6**: the rates editor no longer says "USD", and a **legacy USD config from 0.1.0 is
+  upgraded to CNY** once.
 - **0.1.5**: a **By model** breakdown (per provider/model spend for this session, with share
   bars), per-model rows inside **Daily**, and a sectioned panel layout.
 - **0.1.4**: **daily stats** in the panel (aggregated across sessions, 90 days kept); the
