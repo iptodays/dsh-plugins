@@ -111,7 +111,7 @@ function loadInternals(react, now, extra) {
   const sandbox = makeSandbox(react, extra, now);
   const source =
     readFileSync(join(root, "src", "client.js"), "utf8") +
-    "\nexports.__test = { rateUsage, rateLedger, resolveRates, mergeConfig, formatMoney, formatTokens, formatRate, DEFAULT_CONFIG, TokenPurseView, matchCurrencyPreset, findCurrencyPreset, fetchUsdRate, parsePeakWindow, parsePeak, isPeakAt, ratesAt, emptyLedger, syncLedger, migrateConfigV1, rateSource, CURRENCY_PRESETS, localDayKey, sessionDayRows, mergeSessionDayRows, dailyStats, normalizeDaily, emptyDaily, formatDayKey };\n";
+    "\nexports.__test = { rateUsage, rateLedger, resolveRates, mergeConfig, formatMoney, formatTokens, formatRate, DEFAULT_CONFIG, TokenPurseView, matchCurrencyPreset, findCurrencyPreset, fetchUsdRate, parsePeakWindow, parsePeak, isPeakAt, ratesAt, emptyLedger, syncLedger, migrateConfigV1, rateSource, CURRENCY_PRESETS, localDayKey, sessionModelRows, formatModelLabel, sharePercent, sessionDayRows, mergeSessionDayRows, dailyStats, normalizeDaily, emptyDaily, formatDayKey };\n";
   vm.runInContext(source, sandbox);
   return sandbox.exports.__test;
 }
@@ -254,7 +254,24 @@ const mixedLedger = internals.syncLedger(providerLedger, { uncachedInputTokens: 
 const mixedRated = internals.rateLedger(mixedLedger, { uncachedInputTokens: 2000000 }, { next: { provider: "deepseek-official", model: "deepseek-flash" } }, config, monday1200Utc.getTime());
 check("ledger keeps per-entry provider (0.8 + 1)", Math.abs(mixedRated.amount - 1.8) < 1e-9);
 
-/* ── 1g. 每日统计 ──────────────────────────────────────────────────── */
+/* ── 1g. 按 provider/model 拆分 ─────────────────────────────────────── */
+
+const modelRows = internals.sessionModelRows(mixedLedger, { uncachedInputTokens: 2000000 }, { next: { provider: "deepseek-official", model: "deepseek-flash" } }, config, monday1200Utc.getTime());
+check(
+  "sessionModelRows splits by provider/model",
+  modelRows.length === 2 &&
+    modelRows[0].label === "deepseek-official / deepseek-flash" &&
+    Math.abs(modelRows[0].amount - 1) < 1e-9 &&
+    modelRows[1].label === "packyapi / deepseek-flash" &&
+    Math.abs(modelRows[1].amount - 0.8) < 1e-9 &&
+    modelRows[1].tokens === 1000000
+);
+check("sessionModelRows sorts by amount", modelRows[0].amount > modelRows[1].amount);
+check("sessionModelRows covers the total", Math.abs(modelRows.reduce((sum, row) => sum + row.amount, 0) - mixedRated.amount) < 1e-9);
+check("sharePercent bounds", internals.sharePercent(0, 10) === 0 && internals.sharePercent(1, 100) === 2 && internals.sharePercent(10, 10) === 100);
+check("formatModelLabel plain model", internals.formatModelLabel(null, "m") === "m" && internals.formatModelLabel("p", "m") === "p / m");
+
+/* ── 1h. 每日统计 ──────────────────────────────────────────────────── */
 
 const day1 = new Date("2025-01-06T04:00:00Z").getTime();
 const day2 = new Date("2025-01-07T04:00:00Z").getTime();
@@ -282,6 +299,27 @@ check("dailyStats sums sessions, newest first", dayStatRows.length === 2 && dayS
 check("dailyStats older day", Math.abs(dayStatRows[1].amount - 2) < 1e-9 && dayStatRows[1].tokens === 2000000);
 check("daily prune drops old days", Object.keys(internals.mergeSessionDayRows(dayStoreC, "s9", [], new Date("2025-06-01T00:00:00Z").getTime()).days).length === 0);
 check("normalizeDaily drops junk", Object.keys(internals.normalizeDaily({ days: { bad: [], "2025-01-06": [{ b: { uncachedInputTokens: 5 } }] } }).days).length === 1);
+check(
+  "dailyStats carries per-model rows",
+  dayStatRows[0].models.length === 1 && dayStatRows[0].models[0].label === null && Math.abs(dayStatRows[0].models[0].amount - dayStatRows[0].amount) < 1e-9
+);
+const multiDayStore = internals.mergeSessionDayRows(
+  internals.emptyDaily(),
+  "s1",
+  [
+    { d: "2025-01-06", p: "packyapi", m: "deepseek-v4-pro", k: 0, b: { uncachedInputTokens: 1000000, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 } },
+    { d: "2025-01-06", p: "deepseek-official", m: "deepseek-flash", k: 0, b: { uncachedInputTokens: 1000000, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 } }
+  ],
+  day2
+);
+const multiDayStats = internals.dailyStats(multiDayStore, config);
+check(
+  "dailyStats splits one day by model",
+  multiDayStats[0].models.length === 2 &&
+    multiDayStats[0].models[0].label === "packyapi / deepseek-v4-pro" &&
+    Math.abs(multiDayStats[0].models[0].amount - 2.25) < 1e-9 &&
+    Math.abs(multiDayStats[0].amount - 3.25) < 1e-9
+);
 
 /* ── 2. 模块外壳与注册 ──────────────────────────────────────────────── */
 
@@ -353,6 +391,24 @@ check("panel carries model label", serialized.indexOf("deepseek-official / deeps
 check("trigger has aria label", serialized.indexOf("trigger.aria") !== -1);
 check("badge shows current off-peak mode", serialized.indexOf("peak.badgeLow") !== -1 && serialized.indexOf("modeChipOn") === -1);
 check("panel labels current pricing", serialized.indexOf("peak.current") !== -1);
+const LEDGER_SEED = {
+  observed: true,
+  seen: { uncachedInputTokens: 1000000, cacheReadTokens: 1000000, cacheWriteTokens: 0, outputTokens: 500000 },
+  base: null,
+  entries: [
+    { at: monday1200Utc.getTime(), provider: "packyapi", model: "deepseek-v4-pro", b: { uncachedInputTokens: 400000, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 } },
+    { at: monday1200Utc.getTime(), provider: "deepseek-official", model: "deepseek-flash", b: { uncachedInputTokens: 600000, cacheReadTokens: 1000000, cacheWriteTokens: 0, outputTokens: 500000 } }
+  ]
+};
+const modelInternals = loadInternals(react, undefined, (sandbox) => {
+  sandbox.window.localStorage.getItem = (key) => (key === "dsh.token-purse.ledger.v1:default" ? JSON.stringify(LEDGER_SEED) : null);
+});
+react.reset();
+react.seed({ 1: true });
+const modelSerialized = JSON.stringify(modelInternals.TokenPurseView({ usage, selection, t }));
+check("panel renders by-model breakdown", modelSerialized.indexOf("breakdown.byModel") !== -1 && modelSerialized.indexOf("packyapi / deepseek-v4-pro") !== -1);
+check("by-model rows carry a share bar", modelSerialized.indexOf("TPurse_shareFill") !== -1 && modelSerialized.indexOf("TPurse_breakAmount") !== -1);
+
 const dailyInternals = loadInternals(react, undefined, (sandbox) => {
   sandbox.window.localStorage.getItem = (key) => (key === "dsh.token-purse.daily.v1" ? JSON.stringify(DAILY_SEED) : null);
 });

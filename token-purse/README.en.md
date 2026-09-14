@@ -187,6 +187,24 @@ The bottom of the panel lists the last few days' tokens and spend (up to 7):
 - A day is the local date of the **observation time**; as above, history from before the
   plugin was enabled lands on the day it was first observed. Deleting that key resets it.
 
+## By provider and model
+
+When more than one provider or model is in play, the panel adds a **By model** block listing
+each **provider / model** used in this session with its tokens and spend, largest first, plus
+a share bar:
+
+    deepseek-official / deepseek-flash   2.1M   ¥2.62
+    packyapi / deepseek-v4-pro           400K   ¥0.90
+
+- It only appears with **two or more** provider/model pairs; with a single model the header
+  already says it, so no space is wasted.
+- Rates match on **provider/model** first, then fall back to the bare model name and finally to
+  the generic rate; the source chip at the top of the panel says which one applied.
+- In **Daily**, a day that used several models indents them under that day; single-model days
+  stay collapsed.
+- Everything is **priced per segment and then grouped**, so the per-model amounts add up to the
+  badge total.
+
 ## Currency
 
 The lower half of the popover has **Currency** and **Rate** rows:
@@ -252,6 +270,8 @@ otherwise refresh the page.
 
 ## Changelog
 
+- **0.1.5**: a **By model** breakdown (per provider/model spend for this session, with share
+  bars), per-model rows inside **Daily**, and a sectioned panel layout.
 - **0.1.4**: **daily stats** in the panel (aggregated across sessions, 90 days kept); the
   **Split** switch from the previous release is gone.
 - **0.1.3**: optional peak/off-peak amount split, toggled by **Split** in the panel and stored

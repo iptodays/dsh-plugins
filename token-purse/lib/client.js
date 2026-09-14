@@ -212,12 +212,19 @@ window.__ModuleLoader__.load({
 		  ".TPurse_peakLabel{flex:none;color:var(--dsw-alias-label-tertiary)}" +
 		  ".TPurse_modeChip{flex:none;padding:0 5px;border:1px solid var(--dsw-alias-border-l1);border-radius:999px;font-size:10px;line-height:14px;letter-spacing:.02em;white-space:nowrap;color:var(--dsw-alias-label-tertiary)}" +
 		  ".TPurse_modeChipOn{border-color:var(--dsw-static-yellow-500,#d97706);color:var(--dsw-static-yellow-500,#d97706);font-weight:600}" +
-		  ".TPurse_daily{margin-top:10px;padding-top:8px;border-top:1px solid var(--dsw-alias-border-l1)}" +
-		  ".TPurse_dailyHead{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;margin-bottom:4px}" +
-		  ".TPurse_dailyRow{display:flex;align-items:center;gap:10px;font-size:11px;line-height:17px;font-variant-numeric:tabular-nums}" +
-		  ".TPurse_dailyDay{color:var(--dsw-alias-label-tertiary)}" +
-		  ".TPurse_dailyTokens{color:var(--dsw-alias-label-tertiary)}" +
-		  ".TPurse_dailyAmount{margin-left:auto;color:var(--dsw-alias-label-primary)}" +
+		  ".TPurse_section{margin-top:10px;padding-top:8px;border-top:1px solid var(--dsw-alias-border-l1)}" +
+		  ".TPurse_sectionHead{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;margin-bottom:4px}" +
+		  ".TPurse_breakItem{margin-bottom:5px}" +
+		  ".TPurse_breakRow{display:flex;align-items:baseline;gap:8px;font-size:11px;line-height:17px;font-variant-numeric:tabular-nums}" +
+		  ".TPurse_breakLabel{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary)}" +
+		  ".TPurse_breakDay{flex:1 1 auto;min-width:0;color:var(--dsw-alias-label-secondary)}" +
+		  ".TPurse_breakTokens{flex:none;color:var(--dsw-alias-label-tertiary)}" +
+		  ".TPurse_breakAmount{flex:none;min-width:58px;text-align:right;color:var(--dsw-alias-label-primary)}" +
+		  ".TPurse_breakSub{margin-left:12px}" +
+		  ".TPurse_breakSub .TPurse_breakLabel,.TPurse_breakSub .TPurse_breakTokens{color:var(--dsw-alias-label-tertiary)}" +
+		  ".TPurse_breakSub .TPurse_breakAmount{color:var(--dsw-alias-label-secondary)}" +
+		  ".TPurse_share{display:block;height:3px;margin:3px 0 0;border-radius:2px;background:var(--dsw-alias-fill-l2);overflow:hidden}" +
+		  ".TPurse_shareFill{display:block;height:100%;border-radius:2px;background:var(--dsw-alias-label-tertiary)}" +
 		  ".TPurse_warnNote{margin-top:6px;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px;word-break:break-word}" +
 		  ".TPurse_sourceChip{flex:none;padding:0 6px;border-radius:999px;background:var(--dsw-alias-fill-l2,transparent);color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:15px}" +
 		  ".TPurse_sourceChipExact{color:var(--dsw-alias-label-secondary)}" +
@@ -266,12 +273,17 @@ window.__ModuleLoader__.load({
 		  peakLabel: "TPurse_peakLabel",
 		  modeChip: "TPurse_modeChip",
 		  modeChipOn: "TPurse_modeChipOn",
-		  daily: "TPurse_daily",
-		  dailyHead: "TPurse_dailyHead",
-		  dailyRow: "TPurse_dailyRow",
-		  dailyDay: "TPurse_dailyDay",
-		  dailyTokens: "TPurse_dailyTokens",
-		  dailyAmount: "TPurse_dailyAmount",
+		  section: "TPurse_section",
+		  sectionHead: "TPurse_sectionHead",
+		  breakItem: "TPurse_breakItem",
+		  breakRow: "TPurse_breakRow",
+		  breakLabel: "TPurse_breakLabel",
+		  breakDay: "TPurse_breakDay",
+		  breakTokens: "TPurse_breakTokens",
+		  breakAmount: "TPurse_breakAmount",
+		  breakSub: "TPurse_breakSub",
+		  share: "TPurse_share",
+		  shareFill: "TPurse_shareFill",
 		  warnNote: "TPurse_warnNote",
 		  sourceChip: "TPurse_sourceChip",
 		  sourceChipExact: "TPurse_sourceChipExact",
@@ -718,6 +730,18 @@ window.__ModuleLoader__.load({
 		  return fx;
 		}
 
+		/** "provider / model"，没有 provider 时只有模型名。 */
+		function formatModelLabel(provider, model) {
+		  if (model === null || model === undefined) return null;
+		  return typeof provider === "string" && provider.length > 0 ? provider + " / " + model : model;
+		}
+
+		/** 占比进度条宽度：忽略 0，给最小值 2% 以免看不见。 */
+		function sharePercent(amount, total) {
+		  if (!(total > 0) || !(amount > 0)) return 0;
+		  return Math.min(100, Math.max(2, (amount / total) * 100));
+		}
+
 		function usdBreakdown(totals, selection, config, ledger, at) {
 		  const model = pickModel(selection);
 		  const modelId = model === null ? null : model.model;
@@ -784,12 +808,7 @@ window.__ModuleLoader__.load({
 		    amount += subtotal;
 		    rows.push({ key: definition.key, label: definition.label, tokens: count, amount: subtotal });
 		  }
-		  const modelLabel =
-		    model === null
-		      ? null
-		      : typeof model.provider === "string" && model.provider.length > 0
-		        ? model.provider + " / " + model.model
-		        : model.model;
+		  const modelLabel = model === null ? null : formatModelLabel(typeof model.provider === "string" ? model.provider : null, model.model);
 		  return { rows, tokens: totalOf(totals), amount, modelLabel, source, peak };
 		}
 
@@ -882,6 +901,59 @@ window.__ModuleLoader__.load({
 		  return Array.from(rows.values());
 		}
 
+		/** 当前会话按 provider/model 拆分的明细，金额大的在前；未覆盖的余量算到当前模型。 */
+		function sessionModelRows(ledger, usage, selection, config, at) {
+		  const peak = parsePeak(config);
+		  const fx = fxPerUsd(config);
+		  const perUsdValue = toNumber(config.currency.perUsd, 1);
+		  const perUsd = perUsdValue > 0 ? perUsdValue : 1;
+		  const rows = new Map();
+		  const covered = zeroBuckets();
+		  const push = (buckets, provider, model, moment) => {
+		    const key = (provider === null ? "" : provider) + "\u0000" + (model === null ? "" : model);
+		    let row = rows.get(key);
+		    if (row === undefined) {
+		      row = { key, provider, model, label: formatModelLabel(provider, model), tokens: 0, amount: 0 };
+		      rows.set(key, row);
+		    }
+		    const rates = ratesAt(config, model, moment, peak, provider);
+		    const native = costBuckets(buckets, rates);
+		    const ratePerUsd = toNumber(fx[rates.currency], 1);
+		    const divide = ratePerUsd > 0 ? 1 / ratePerUsd : 1;
+		    for (const bucket of BUCKETS) {
+		      row.tokens += buckets[bucket];
+		      row.amount += native[bucket] * divide * perUsd;
+		    }
+		  };
+		  if (ledger !== null && ledger !== undefined) {
+		    if (ledger.base !== null) {
+		      push(ledger.base.b, ledger.base.provider, ledger.base.model, ledger.base.at);
+		      for (const bucket of BUCKETS) covered[bucket] += ledger.base.b[bucket];
+		    }
+		    for (const entry of ledger.entries) {
+		      push(entry.b, entry.provider, entry.model, entry.at);
+		      for (const bucket of BUCKETS) covered[bucket] += entry.b[bucket];
+		    }
+		  }
+		  const model = pickModel(selection);
+		  const modelId = model === null ? null : model.model;
+		  const providerId = model === null || typeof model.provider !== "string" || model.provider.length === 0 ? null : model.provider;
+		  const totals = bucketSnapshot(usage);
+		  const rest = zeroBuckets();
+		  let hasRest = false;
+		  for (const bucket of BUCKETS) {
+		    const value = totals[bucket] - covered[bucket];
+		    if (value > 0) {
+		      rest[bucket] = value;
+		      hasRest = true;
+		    }
+		  }
+		  if (hasRest) push(rest, providerId, modelId, at);
+		  const list = Array.from(rows.values());
+		  list.sort((left, right) => right.amount - left.amount);
+		  return list;
+		}
+
 		/** 用当前会话的数据替换它自己的旧记录，并丢掉过期天数。 */
 		function mergeSessionDayRows(store, sessionId, rows, now) {
 		  const next = emptyDaily();
@@ -898,13 +970,15 @@ window.__ModuleLoader__.load({
 		  return next;
 		}
 
-		/** 汇总所有会话：每天一条，按当前费率计价，最近的排在前面。 */
+		/** 汇总所有会话：每天一条（含当天各 provider/model 的明细），按当前费率计价，最近的在前。 */
 		function dailyStats(store, config) {
 		  const fx = fxPerUsd(config);
-		  const perUsd = toNumber(config.currency.perUsd, 1);
-		  const rows = [];
+		  const perUsdValue = toNumber(config.currency.perUsd, 1);
+		  const perUsd = perUsdValue > 0 ? perUsdValue : 1;
+		  const days = [];
 		  for (const day of Object.keys(store.days)) {
-		    let usd = 0;
+		    const byModel = new Map();
+		    let amount = 0;
 		    let tokens = 0;
 		    for (const row of store.days[day]) {
 		      const rates = resolveRates(config, row.m, row.p);
@@ -920,15 +994,26 @@ window.__ModuleLoader__.load({
 		      const native = costBuckets(row.b, effective);
 		      const ratePerUsd = toNumber(fx[effective.currency], 1);
 		      const divide = ratePerUsd > 0 ? 1 / ratePerUsd : 1;
+		      const key = (row.p === null ? "" : row.p) + "\u0000" + (row.m === null ? "" : row.m);
+		      let entry = byModel.get(key);
+		      if (entry === undefined) {
+		        entry = { key, provider: row.p, model: row.m, label: formatModelLabel(row.p, row.m), amount: 0, tokens: 0 };
+		        byModel.set(key, entry);
+		      }
 		      for (const bucket of BUCKETS) {
-		        usd += native[bucket] * divide;
+		        const value = native[bucket] * divide * perUsd;
+		        amount += value;
+		        entry.amount += value;
 		        tokens += row.b[bucket];
+		        entry.tokens += row.b[bucket];
 		      }
 		    }
-		    rows.push({ day, amount: usd * (perUsd > 0 ? perUsd : 1), tokens });
+		    const models = Array.from(byModel.values());
+		    models.sort((left, right) => right.amount - left.amount);
+		    days.push({ day, amount, tokens, models });
 		  }
-		  rows.sort((left, right) => (left.day < right.day ? 1 : left.day > right.day ? -1 : 0));
-		  return rows;
+		  days.sort((left, right) => (left.day < right.day ? 1 : left.day > right.day ? -1 : 0));
+		  return days;
 		}
 
 		/** "2026-09-11" -> "09-11" */
@@ -1036,6 +1121,7 @@ window.__ModuleLoader__.load({
 		    [ledger, usage, selection, config, tick]
 		  );
 		  const dailyRows = dailyStats(daily, config);
+		  const modelRows = sessionModelRows(ledger, usage, selection, config, Date.now());
 
 		  if (rated === null) return null;
 
@@ -1208,10 +1294,6 @@ window.__ModuleLoader__.load({
 		              h("dd", null, h("span", { className: CSS.tokens }, formatTokens(rated.tokens)))
 		            )
 		          ),
-		          h("div", { className: CSS.note }, t("panel.note")),
-		          rated.source === "fallback"
-		            ? h("div", { className: CSS.warnNote }, t("rate.unpriced", { model: rated.modelLabel }))
-		            : null,
 		          rated.peak === null || rated.peak === undefined
 		            ? null
 		            : h(
@@ -1225,22 +1307,70 @@ window.__ModuleLoader__.load({
 		                ),
 		                h("span", { className: CSS.peakText }, t("peak.note", { windows: rated.peak.windows.join(" / "), timezone: rated.peak.timezone }))
 		              ),
+		          modelRows.length < 2
+		            ? null
+		            : h(
+		                "div",
+		                { className: CSS.section },
+		                h("div", { className: CSS.sectionHead, title: t("breakdown.byModelHint") }, t("breakdown.byModel", { count: modelRows.length })),
+		                modelRows.map((row) =>
+		                  h(
+		                    "div",
+		                    { className: CSS.breakItem, key: row.key },
+		                    h(
+		                      "div",
+		                      { className: CSS.breakRow },
+		                      h("span", { className: CSS.breakLabel, title: row.label === null ? t("breakdown.unknown") : row.label }, row.label === null ? t("breakdown.unknown") : row.label),
+		                      h("span", { className: CSS.breakTokens }, formatTokens(row.tokens)),
+		                      h("span", { className: CSS.breakAmount }, formatMoney(row.amount, symbol))
+		                    ),
+		                    h(
+		                      "span",
+		                      { className: CSS.share },
+		                      h("span", { className: CSS.shareFill, style: { width: sharePercent(row.amount, rated.amount) + "%" } })
+		                    )
+		                  )
+		                )
+		              ),
 		          dailyRows.length === 0
 		            ? null
 		            : h(
 		                "div",
-		                { className: CSS.daily },
-		                h("div", { className: CSS.dailyHead, title: t("daily.hint") }, t("daily.title")),
-		                dailyRows.slice(0, DAILY_VIEW_DAYS).map((row) =>
+		                { className: CSS.section },
+		                h("div", { className: CSS.sectionHead, title: t("daily.hint") }, t("daily.title")),
+		                dailyRows.slice(0, DAILY_VIEW_DAYS).map((day) =>
 		                  h(
 		                    "div",
-		                    { className: CSS.dailyRow, key: row.day },
-		                    h("span", { className: CSS.dailyDay }, formatDayKey(row.day)),
-		                    h("span", { className: CSS.dailyTokens }, formatTokens(row.tokens)),
-		                    h("span", { className: CSS.dailyAmount }, formatMoney(row.amount, symbol))
+		                    { key: day.day },
+		                    h(
+		                      "div",
+		                      { className: CSS.breakRow },
+		                      h("span", { className: CSS.breakDay }, formatDayKey(day.day)),
+		                      h("span", { className: CSS.breakTokens }, formatTokens(day.tokens)),
+		                      h("span", { className: CSS.breakAmount }, formatMoney(day.amount, symbol))
+		                    ),
+		                    day.models.length > 1
+		                      ? h(
+		                          "div",
+		                          { className: CSS.breakSub },
+		                          day.models.map((model) =>
+		                            h(
+		                              "div",
+		                              { className: CSS.breakRow, key: model.key },
+		                              h("span", { className: CSS.breakLabel, title: model.label === null ? t("breakdown.unknown") : model.label }, model.label === null ? t("breakdown.unknown") : model.label),
+		                              h("span", { className: CSS.breakTokens }, formatTokens(model.tokens)),
+		                              h("span", { className: CSS.breakAmount }, formatMoney(model.amount, symbol))
+		                            )
+		                          )
+		                        )
+		                      : null
 		                  )
 		                )
 		              ),
+		          h("div", { className: CSS.note }, t("panel.note")),
+		          rated.source === "fallback"
+		            ? h("div", { className: CSS.warnNote }, t("rate.unpriced", { model: rated.modelLabel }))
+		            : null,
 		          h(
 		            "div",
 		            { className: CSS.fields },
@@ -1394,6 +1524,9 @@ window.__ModuleLoader__.load({
 		  "peak.badgeLow": "谷",
 		  "peak.modeHigh": "当前处于高峰时段，单价 ×{factor}",
 		  "peak.modeLow": "当前处于低峰（空闲）时段",
+		  "breakdown.byModel": "按模型 · {count}",
+		  "breakdown.unknown": "未知模型",
+		  "breakdown.byModelHint": "本会话各 provider / 模型的用量与花费",
 		  "daily.title": "每日",
 		  "daily.hint": "按观察时刻归入当天，保留最近 90 天",
 		  "peak.note": "{windows} · {timezone}",
@@ -1436,6 +1569,9 @@ window.__ModuleLoader__.load({
 		  "peak.badgeLow": "Off",
 		  "peak.modeHigh": "Currently in peak hours, unit price ×{factor}",
 		  "peak.modeLow": "Currently off-peak (idle) hours",
+		  "breakdown.byModel": "By model · {count}",
+		  "breakdown.unknown": "Unknown model",
+		  "breakdown.byModelHint": "Tokens and spend per provider / model in this session",
 		  "daily.title": "Daily",
 		  "daily.hint": "Bucketed by observation time, last 90 days kept",
 		  "peak.note": "{windows} · {timezone}",
