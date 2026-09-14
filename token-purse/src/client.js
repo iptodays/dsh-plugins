@@ -67,7 +67,6 @@ const DEFAULT_CONFIG = {
   currency: { code: "CNY", symbol: "¥", perUsd: 7.1, auto: false },
   fx: { USD: 1, CNY: 7.1 },
   peak: DEFAULT_PEAK,
-  ui: { peakSplit: true },
   models: DEFAULT_MODELS
 };
 
@@ -206,9 +205,12 @@ const CSS_TEXT =
   ".TPurse_peakLabel{flex:none;color:var(--dsw-alias-label-tertiary)}" +
   ".TPurse_modeChip{flex:none;padding:0 5px;border:1px solid var(--dsw-alias-border-l1);border-radius:999px;font-size:10px;line-height:14px;letter-spacing:.02em;white-space:nowrap;color:var(--dsw-alias-label-tertiary)}" +
   ".TPurse_modeChipOn{border-color:var(--dsw-static-yellow-500,#d97706);color:var(--dsw-static-yellow-500,#d97706);font-weight:600}" +
-  ".TPurse_peakToggle{flex:none;margin-left:auto;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;cursor:pointer;color:var(--dsw-alias-label-tertiary)}" +
-  ".TPurse_peakToggle input{margin:0;cursor:pointer}" +
-  ".TPurse_split{margin-top:6px;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px;font-variant-numeric:tabular-nums}" +
+  ".TPurse_daily{margin-top:10px;padding-top:8px;border-top:1px solid var(--dsw-alias-border-l1)}" +
+  ".TPurse_dailyHead{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;margin-bottom:4px}" +
+  ".TPurse_dailyRow{display:flex;align-items:center;gap:10px;font-size:11px;line-height:17px;font-variant-numeric:tabular-nums}" +
+  ".TPurse_dailyDay{color:var(--dsw-alias-label-tertiary)}" +
+  ".TPurse_dailyTokens{color:var(--dsw-alias-label-tertiary)}" +
+  ".TPurse_dailyAmount{margin-left:auto;color:var(--dsw-alias-label-primary)}" +
   ".TPurse_warnNote{margin-top:6px;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px;word-break:break-word}" +
   ".TPurse_sourceChip{flex:none;padding:0 6px;border-radius:999px;background:var(--dsw-alias-fill-l2,transparent);color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:15px}" +
   ".TPurse_sourceChipExact{color:var(--dsw-alias-label-secondary)}" +
@@ -257,8 +259,12 @@ const CSS = {
   peakLabel: "TPurse_peakLabel",
   modeChip: "TPurse_modeChip",
   modeChipOn: "TPurse_modeChipOn",
-  peakToggle: "TPurse_peakToggle",
-  split: "TPurse_split",
+  daily: "TPurse_daily",
+  dailyHead: "TPurse_dailyHead",
+  dailyRow: "TPurse_dailyRow",
+  dailyDay: "TPurse_dailyDay",
+  dailyTokens: "TPurse_dailyTokens",
+  dailyAmount: "TPurse_dailyAmount",
   warnNote: "TPurse_warnNote",
   sourceChip: "TPurse_sourceChip",
   sourceChipExact: "TPurse_sourceChipExact",
@@ -324,12 +330,6 @@ function normalizePeak(raw) {
   return { timezone, windows };
 }
 
-/** 界面偏好：peakSplit 控制面板里是否显示高峰/低峰金额拆分。 */
-function normalizeUi(raw) {
-  const source = raw !== null && raw !== undefined && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
-  return { peakSplit: source.peakSplit !== false };
-}
-
 function cloneConfig(config) {
   const models = {};
   for (const key of Object.keys(config.models)) models[key] = normalizeRates(config.models[key]);
@@ -342,7 +342,6 @@ function cloneConfig(config) {
     },
     fx: normalizeFx(config.fx),
     peak: normalizePeak(config.peak),
-    ui: normalizeUi(config.ui),
     models
   };
 }
@@ -383,10 +382,6 @@ function mergeConfig(base, patch) {
   if (fx !== null && fx !== undefined && typeof fx === "object" && !Array.isArray(fx)) {
     const normalized = normalizeFx(fx);
     for (const code of Object.keys(normalized)) merged.fx[code] = normalized[code];
-  }
-  const ui = patch.ui;
-  if (ui !== null && ui !== undefined && typeof ui === "object" && !Array.isArray(ui)) {
-    if (typeof ui.peakSplit === "boolean") merged.ui.peakSplit = ui.peakSplit;
   }
   return merged;
 }
@@ -723,22 +718,13 @@ function usdBreakdown(totals, selection, config, ledger, at) {
   const peak = parsePeak(config);
   const fx = fxPerUsd(config);
   const usd = zeroBuckets();
-  const split = { peak: 0, off: 0 };
   const accumulate = (buckets, entryProvider, entryModel, moment) => {
     const rates = ratesAt(config, entryModel === null ? modelId : entryModel, moment, peak, entryProvider === null || entryProvider === undefined ? providerId : entryProvider);
     const cost = costBuckets(buckets, rates);
     /* 费率自带币种 → 美元：除以「该币种每 1 美元的数额」；显示时再乘 currency.perUsd。 */
     const ratePerUsd = toNumber(fx[rates.currency], 1);
     const factor = ratePerUsd > 0 ? 1 / ratePerUsd : 1;
-    const inPeak = peak !== null && rates.peakMultiplier > 1 && isPeakAt(new Date(moment), peak);
-    let subtotal = 0;
-    for (const key of BUCKETS) {
-      const value = cost[key] * factor;
-      usd[key] += value;
-      subtotal += value;
-    }
-    if (inPeak) split.peak += subtotal;
-    else split.off += subtotal;
+    for (const key of BUCKETS) usd[key] += cost[key] * factor;
   };
   if (ledger !== null && ledger !== undefined) {
     if (ledger.base !== null) accumulate(ledger.base.b, ledger.base.provider, ledger.base.model, ledger.base.at);
@@ -763,7 +749,6 @@ function usdBreakdown(totals, selection, config, ledger, at) {
   const active = peak !== null && rates.peakMultiplier > 1 && isPeakAt(new Date(at), peak);
   return {
     usd,
-    split,
     source: rateSource(config, modelId, providerId),
     peak:
       peak === null || rates.peakMultiplier <= 1
@@ -782,7 +767,7 @@ function rateLedger(ledger, usage, selection, config, at) {
   if (totalOf(totals) <= 0) return null;
   const moment = at === undefined ? Date.now() : at;
   const model = pickModel(selection);
-  const { usd, split, peak, source } = usdBreakdown(totals, selection, config, ledger, moment);
+  const { usd, peak, source } = usdBreakdown(totals, selection, config, ledger, moment);
   const rows = [];
   let amount = 0;
   for (const definition of BUCKET_DEFINITIONS) {
@@ -798,16 +783,7 @@ function rateLedger(ledger, usage, selection, config, at) {
       : typeof model.provider === "string" && model.provider.length > 0
         ? model.provider + " / " + model.model
         : model.model;
-  const perUsd = config.currency.perUsd;
-  return {
-    rows,
-    tokens: totalOf(totals),
-    amount,
-    modelLabel,
-    source,
-    peak,
-    split: { peak: split.peak * perUsd, off: split.off * perUsd }
-  };
+  return { rows, tokens: totalOf(totals), amount, modelLabel, source, peak };
 }
 
 /* ──────────────────────────────── 格式化 ──────────────────────────────── */
@@ -815,6 +791,143 @@ function rateLedger(ledger, usage, selection, config, at) {
 function compactNumber(value) {
   if (value >= 100) return String(Math.round(value));
   return String(Math.round(value * 10) / 10);
+}
+
+/* ── 每日统计：把各会话的增量按「天」归类，跨会话汇总并持久化 ───────────── */
+
+const DAILY_KEY = "dsh.token-purse.daily.v1";
+const DAILY_KEEP_DAYS = 90;
+const DAILY_VIEW_DAYS = 7;
+
+/** 本地日期键，如 "2026-09-11"。 */
+function localDayKey(moment) {
+  const date = new Date(moment);
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return date.getFullYear() + "-" + month + "-" + day;
+}
+
+function emptyDaily() {
+  return { v: 1, days: {} };
+}
+
+function normalizeDaily(raw) {
+  const store = emptyDaily();
+  if (raw === null || raw === undefined || typeof raw !== "object" || Array.isArray(raw)) return store;
+  if (raw.days === null || raw.days === undefined || typeof raw.days !== "object" || Array.isArray(raw.days)) return store;
+  for (const day of Object.keys(raw.days)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+    const rows = raw.days[day];
+    if (!Array.isArray(rows)) continue;
+    const kept = [];
+    for (const row of rows) {
+      if (row === null || row === undefined || typeof row !== "object") continue;
+      kept.push({
+        s: typeof row.s === "string" ? row.s : null,
+        p: typeof row.p === "string" ? row.p : null,
+        m: typeof row.m === "string" ? row.m : null,
+        k: row.k === 1 ? 1 : 0,
+        b: bucketSnapshot(row.b)
+      });
+    }
+    if (kept.length > 0) store.days[day] = kept;
+  }
+  return store;
+}
+
+function readDaily() {
+  try {
+    const raw = window.localStorage.getItem(DAILY_KEY);
+    return raw === null || raw === undefined ? emptyDaily() : normalizeDaily(JSON.parse(raw));
+  } catch (error) {
+    return emptyDaily();
+  }
+}
+
+function writeDaily(store) {
+  try {
+    window.localStorage.setItem(DAILY_KEY, JSON.stringify(store));
+  } catch (error) {
+    /* 配额不足等：跳过，下次观察重算即可。 */
+  }
+}
+
+/** 把会话账本折算成「天 × 模型 × 峰谷」的桶；重复计算同一账本结果一致（幂等）。 */
+function sessionDayRows(ledger, config) {
+  const peak = parsePeak(config);
+  const rows = new Map();
+  const push = (buckets, provider, model, moment) => {
+    const day = localDayKey(moment);
+    const rates = resolveRates(config, model, provider);
+    const flag = peak !== null && rates.peakMultiplier > 1 && isPeakAt(new Date(moment), peak) ? 1 : 0;
+    const key = day + "\u0000" + (provider === null ? "" : provider) + "\u0000" + (model === null ? "" : model) + "\u0000" + flag;
+    let row = rows.get(key);
+    if (row === undefined) {
+      row = { d: day, p: provider, m: model, k: flag, b: zeroBuckets() };
+      rows.set(key, row);
+    }
+    for (const bucket of BUCKETS) row.b[bucket] += buckets[bucket];
+  };
+  if (ledger !== null && ledger !== undefined) {
+    if (ledger.base !== null) push(ledger.base.b, ledger.base.provider, ledger.base.model, ledger.base.at);
+    for (const entry of ledger.entries) push(entry.b, entry.provider, entry.model, entry.at);
+  }
+  return Array.from(rows.values());
+}
+
+/** 用当前会话的数据替换它自己的旧记录，并丢掉过期天数。 */
+function mergeSessionDayRows(store, sessionId, rows, now) {
+  const next = emptyDaily();
+  for (const day of Object.keys(store.days)) {
+    const kept = store.days[day].filter((row) => row.s !== sessionId);
+    if (kept.length > 0) next.days[day] = kept;
+  }
+  for (const row of rows) {
+    if (next.days[row.d] === undefined) next.days[row.d] = [];
+    next.days[row.d].push({ s: sessionId, p: row.p, m: row.m, k: row.k, b: row.b });
+  }
+  const cutoff = localDayKey(now - DAILY_KEEP_DAYS * 24 * 60 * 60 * 1000);
+  for (const day of Object.keys(next.days)) if (day < cutoff) delete next.days[day];
+  return next;
+}
+
+/** 汇总所有会话：每天一条，按当前费率计价，最近的排在前面。 */
+function dailyStats(store, config) {
+  const fx = fxPerUsd(config);
+  const perUsd = toNumber(config.currency.perUsd, 1);
+  const rows = [];
+  for (const day of Object.keys(store.days)) {
+    let usd = 0;
+    let tokens = 0;
+    for (const row of store.days[day]) {
+      const rates = resolveRates(config, row.m, row.p);
+      const factor = row.k === 1 && rates.peakMultiplier > 1 ? rates.peakMultiplier : 1;
+      const effective = {
+        currency: rates.currency,
+        input: rates.input * factor,
+        cacheRead: rates.cacheRead * factor,
+        cacheWrite: rates.cacheWrite * factor,
+        output: rates.output * factor,
+        peakMultiplier: rates.peakMultiplier
+      };
+      const native = costBuckets(row.b, effective);
+      const ratePerUsd = toNumber(fx[effective.currency], 1);
+      const divide = ratePerUsd > 0 ? 1 / ratePerUsd : 1;
+      for (const bucket of BUCKETS) {
+        usd += native[bucket] * divide;
+        tokens += row.b[bucket];
+      }
+    }
+    rows.push({ day, amount: usd * (perUsd > 0 ? perUsd : 1), tokens });
+  }
+  rows.sort((left, right) => (left.day < right.day ? 1 : left.day > right.day ? -1 : 0));
+  return rows;
+}
+
+/** "2026-09-11" -> "09-11" */
+function formatDayKey(day) {
+  const text = typeof day === "string" ? day : String(day);
+  return text.length >= 10 ? text.slice(5) : text;
 }
 
 function formatTokens(value) {
@@ -855,6 +968,7 @@ function TokenPurseView({ usage, selection, t, sessionId }) {
   const [fxState, setFxState] = useState("idle");
   const [fxNote, setFxNote] = useState(null);
   const [ledger, setLedger] = useState(() => readLedger(sessionId));
+  const [daily, setDaily] = useState(readDaily);
   const [tick, setTick] = useState(0);
   const rootRef = useRef(null);
 
@@ -894,6 +1008,16 @@ function TokenPurseView({ usage, selection, t, sessionId }) {
     writeLedger(sessionId, ledger);
   }, [sessionId, ledger]);
 
+  /* 每日统计：本会话重复写入同一账本结果是幂等的，不会重复计费。 */
+  useEffect(() => {
+    const rows = sessionDayRows(ledger, config);
+    setDaily((current) => mergeSessionDayRows(current, sessionId, rows, Date.now()));
+  }, [sessionId, ledger, config]);
+
+  useEffect(() => {
+    writeDaily(daily);
+  }, [daily]);
+
   /* 高峰/低峰随时间切换，定时重算；tick 只用于驱动上面的 useMemo。 */
   useEffect(() => {
     const timer = setInterval(() => setTick((value) => value + 1), 60000);
@@ -904,6 +1028,7 @@ function TokenPurseView({ usage, selection, t, sessionId }) {
     () => rateLedger(ledger, usage, selection, config, Date.now()),
     [ledger, usage, selection, config, tick]
   );
+  const dailyRows = dailyStats(daily, config);
 
   if (rated === null) return null;
 
@@ -946,11 +1071,6 @@ function TokenPurseView({ usage, selection, t, sessionId }) {
     writeConfig(merged);
     setConfig(merged);
   };
-  const updateUi = (patch) => {
-    const merged = mergeConfig(config, { ui: patch });
-    writeConfig(merged);
-    setConfig(merged);
-  };
   const currencyPreset = findCurrencyPreset(config.currency.code, symbol);
 
   const refreshRate = (codeOverride) => {
@@ -990,13 +1110,6 @@ function TokenPurseView({ usage, selection, t, sessionId }) {
   };
 
   const peakInfo = rated.peak;
-  const splitParts =
-    config.ui.peakSplit === true && peakInfo !== null && peakInfo !== undefined
-      ? [
-          rated.split.peak > 1e-9 ? t("peak.splitPeak", { amount: formatMoney(rated.split.peak, symbol) }) : null,
-          rated.split.off > 1e-9 ? t("peak.splitOff", { amount: formatMoney(rated.split.off, symbol) }) : null
-        ].filter((part) => part !== null)
-      : [];
   const modeText =
     peakInfo === null || peakInfo === undefined
       ? null
@@ -1095,30 +1208,31 @@ function TokenPurseView({ usage, selection, t, sessionId }) {
           rated.peak === null || rated.peak === undefined
             ? null
             : h(
-                React.Fragment,
-                null,
+                "div",
+                { className: CSS.peakNote },
+                h("span", { className: CSS.peakLabel }, t("peak.current")),
                 h(
-                  "div",
-                  { className: CSS.peakNote },
-                  h("span", { className: CSS.peakLabel }, t("peak.current")),
-                  h(
-                    "span",
-                    { className: CSS.peakChip + (rated.peak.active ? " " + CSS.peakChipOn : "") },
-                    rated.peak.active ? t("peak.high", { factor: rated.peak.multiplier }) : t("peak.low")
-                  ),
-                  h("span", { className: CSS.peakText }, t("peak.note", { windows: rated.peak.windows.join(" / "), timezone: rated.peak.timezone })),
-                  h(
-                    "label",
-                    { className: CSS.peakToggle },
-                    h("input", {
-                      type: "checkbox",
-                      checked: config.ui.peakSplit === true,
-                      onChange: () => updateUi({ peakSplit: config.ui.peakSplit !== true })
-                    }),
-                    h("span", null, t("peak.splitToggle"))
-                  )
+                  "span",
+                  { className: CSS.peakChip + (rated.peak.active ? " " + CSS.peakChipOn : "") },
+                  rated.peak.active ? t("peak.high", { factor: rated.peak.multiplier }) : t("peak.low")
                 ),
-                splitParts.length > 0 ? h("div", { className: CSS.split }, splitParts.join(" · ")) : null
+                h("span", { className: CSS.peakText }, t("peak.note", { windows: rated.peak.windows.join(" / "), timezone: rated.peak.timezone }))
+              ),
+          dailyRows.length === 0
+            ? null
+            : h(
+                "div",
+                { className: CSS.daily },
+                h("div", { className: CSS.dailyHead, title: t("daily.hint") }, t("daily.title")),
+                dailyRows.slice(0, DAILY_VIEW_DAYS).map((row) =>
+                  h(
+                    "div",
+                    { className: CSS.dailyRow, key: row.day },
+                    h("span", { className: CSS.dailyDay }, formatDayKey(row.day)),
+                    h("span", { className: CSS.dailyTokens }, formatTokens(row.tokens)),
+                    h("span", { className: CSS.dailyAmount }, formatMoney(row.amount, symbol))
+                  )
+                )
               ),
           h(
             "div",
@@ -1273,9 +1387,8 @@ const zh = {
   "peak.badgeLow": "谷",
   "peak.modeHigh": "当前处于高峰时段，单价 ×{factor}",
   "peak.modeLow": "当前处于低峰（空闲）时段",
-  "peak.splitToggle": "拆分",
-  "peak.splitPeak": "高峰 {amount}",
-  "peak.splitOff": "低峰 {amount}",
+  "daily.title": "每日",
+  "daily.hint": "按观察时刻归入当天，保留最近 90 天",
   "peak.note": "{windows} · {timezone}",
   "rate.unpriced": "未配置 {model} 的费率，当前按通用兜底价估算——点下方「调整费率」补上。",
   "rate.source.provider": "专属费率",
@@ -1316,9 +1429,8 @@ const en = {
   "peak.badgeLow": "Off",
   "peak.modeHigh": "Currently in peak hours, unit price ×{factor}",
   "peak.modeLow": "Currently off-peak (idle) hours",
-  "peak.splitToggle": "Split",
-  "peak.splitPeak": "Peak {amount}",
-  "peak.splitOff": "Off-peak {amount}",
+  "daily.title": "Daily",
+  "daily.hint": "Bucketed by observation time, last 90 days kept",
   "peak.note": "{windows} · {timezone}",
   "rate.unpriced": "No rate configured for {model} — estimating with the generic fallback. Add it under Edit rates.",
   "rate.source.provider": "Provider rate",

@@ -107,17 +107,17 @@ function makeSandbox(react, extra, now) {
   return sandbox;
 }
 
-function loadInternals(react, now) {
-  const sandbox = makeSandbox(react, undefined, now);
+function loadInternals(react, now, extra) {
+  const sandbox = makeSandbox(react, extra, now);
   const source =
     readFileSync(join(root, "src", "client.js"), "utf8") +
-    "\nexports.__test = { rateUsage, rateLedger, resolveRates, mergeConfig, formatMoney, formatTokens, formatRate, DEFAULT_CONFIG, TokenPurseView, matchCurrencyPreset, findCurrencyPreset, fetchUsdRate, parsePeakWindow, parsePeak, isPeakAt, ratesAt, emptyLedger, syncLedger, migrateConfigV1, rateSource, CURRENCY_PRESETS };\n";
+    "\nexports.__test = { rateUsage, rateLedger, resolveRates, mergeConfig, formatMoney, formatTokens, formatRate, DEFAULT_CONFIG, TokenPurseView, matchCurrencyPreset, findCurrencyPreset, fetchUsdRate, parsePeakWindow, parsePeak, isPeakAt, ratesAt, emptyLedger, syncLedger, migrateConfigV1, rateSource, CURRENCY_PRESETS, localDayKey, sessionDayRows, mergeSessionDayRows, dailyStats, normalizeDaily, emptyDaily, formatDayKey };\n";
   vm.runInContext(source, sandbox);
   return sandbox.exports.__test;
 }
 
-function loadBundle(react, now) {
-  const sandbox = makeSandbox(react, undefined, now);
+function loadBundle(react, now, extra) {
+  const sandbox = makeSandbox(react, extra, now);
   vm.runInContext(readFileSync(join(root, "lib", "client.js"), "utf8"), sandbox);
   return sandbox.registration;
 }
@@ -158,9 +158,6 @@ const merged = internals.mergeConfig(config, {
 });
 check("mergeConfig currency", merged.currency.symbol === "y" && merged.currency.perUsd === 7.2);
 check("mergeConfig adds model", merged.models["my-model"].input === 1 && merged.models["my-model"].cacheRead === 1);
-check("ui.peakSplit defaults on", internals.mergeConfig(config, {}).ui.peakSplit === true);
-check("ui.peakSplit can be disabled", internals.mergeConfig(config, { ui: { peakSplit: false } }).ui.peakSplit === false);
-check("ui.peakSplit ignores junk", internals.mergeConfig(config, { ui: { peakSplit: "no" } }).ui.peakSplit === true);
 
 check("matchCurrencyPreset CNY", internals.matchCurrencyPreset("¥", 7.2).code === "CNY");
 check("matchCurrencyPreset JPY distinct", internals.matchCurrencyPreset("¥", 150).code === "JPY");
@@ -219,8 +216,6 @@ splitLedger = internals.syncLedger(splitLedger, { uncachedInputTokens: 2000000 }
 const splitRated = internals.rateLedger(splitLedger, { uncachedInputTokens: 2000000 }, { next: { model: "deepseek-flash" } }, ledgerConfig, monday0900Utc.getTime());
 check("ledger prices each bracket ($1 off + $2 peak = $3)", Math.abs(splitRated.amount - 3) < 1e-9);
 check("rateLedger reports active peak", splitRated.peak.active === true && splitRated.peak.multiplier === 2);
-check("split off/peak (1 + 2)", Math.abs(splitRated.split.off - 1) < 1e-9 && Math.abs(splitRated.split.peak - 2) < 1e-9);
-check("split sums to total", Math.abs(splitRated.split.off + splitRated.split.peak - splitRated.amount) < 1e-9);
 
 /* ── 1e. 旧配置迁移 ─────────────────────────────────────────────────── */
 
@@ -259,10 +254,48 @@ const mixedLedger = internals.syncLedger(providerLedger, { uncachedInputTokens: 
 const mixedRated = internals.rateLedger(mixedLedger, { uncachedInputTokens: 2000000 }, { next: { provider: "deepseek-official", model: "deepseek-flash" } }, config, monday1200Utc.getTime());
 check("ledger keeps per-entry provider (0.8 + 1)", Math.abs(mixedRated.amount - 1.8) < 1e-9);
 
+/* ── 1g. 每日统计 ──────────────────────────────────────────────────── */
+
+const day1 = new Date("2025-01-06T04:00:00Z").getTime();
+const day2 = new Date("2025-01-07T04:00:00Z").getTime();
+check("localDayKey / formatDayKey", internals.localDayKey(day1) === "2025-01-06" && internals.formatDayKey("2025-01-06") === "01-06");
+
+let dayLedger = internals.syncLedger(internals.emptyLedger(), { uncachedInputTokens: 0 }, null, null, day1);
+dayLedger = internals.syncLedger(dayLedger, { uncachedInputTokens: 1000000 }, null, null, day1);
+dayLedger = internals.syncLedger(dayLedger, { uncachedInputTokens: 3000000 }, null, null, day2);
+const dayRows = internals.sessionDayRows(dayLedger, ledgerConfig);
+check(
+  "sessionDayRows buckets by day",
+  dayRows.length === 2 &&
+    dayRows.some((row) => row.d === "2025-01-06" && row.b.uncachedInputTokens === 1000000) &&
+    dayRows.some((row) => row.d === "2025-01-07" && row.b.uncachedInputTokens === 2000000)
+);
+
+const dayStoreA = internals.mergeSessionDayRows(internals.emptyDaily(), "s1", dayRows, day2);
+check("merge stores per-session rows", dayStoreA.days["2025-01-06"].length === 1 && dayStoreA.days["2025-01-06"][0].s === "s1");
+const dayStoreB = internals.mergeSessionDayRows(dayStoreA, "s2", dayRows, day2);
+check("merge keeps other sessions", dayStoreB.days["2025-01-06"].length === 2);
+const dayStoreC = internals.mergeSessionDayRows(dayStoreB, "s1", dayRows, day2);
+check("re-merge is idempotent", dayStoreC.days["2025-01-06"].length === 2 && dayStoreC.days["2025-01-07"].length === 2);
+const dayStatRows = internals.dailyStats(dayStoreC, ledgerConfig);
+check("dailyStats sums sessions, newest first", dayStatRows.length === 2 && dayStatRows[0].day === "2025-01-07" && Math.abs(dayStatRows[0].amount - 4) < 1e-9 && dayStatRows[0].tokens === 4000000);
+check("dailyStats older day", Math.abs(dayStatRows[1].amount - 2) < 1e-9 && dayStatRows[1].tokens === 2000000);
+check("daily prune drops old days", Object.keys(internals.mergeSessionDayRows(dayStoreC, "s9", [], new Date("2025-06-01T00:00:00Z").getTime()).days).length === 0);
+check("normalizeDaily drops junk", Object.keys(internals.normalizeDaily({ days: { bad: [], "2025-01-06": [{ b: { uncachedInputTokens: 5 } }] } }).days).length === 1);
+
 /* ── 2. 模块外壳与注册 ──────────────────────────────────────────────── */
 
 console.log("bundle + registration");
-const registration = loadBundle(react);
+const DAILY_SEED = {
+  v: 1,
+  days: {
+    "2025-01-06": [{ s: "s0", p: "deepseek-official", m: "deepseek-flash", k: 0, b: { uncachedInputTokens: 1000000, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 } }],
+    "2025-01-05": [{ s: "s0", p: "deepseek-official", m: "deepseek-flash", k: 0, b: { uncachedInputTokens: 2000000, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 } }]
+  }
+};
+const registration = loadBundle(react, undefined, (sandbox) => {
+  sandbox.window.localStorage.getItem = (key) => (key === "dsh.token-purse.daily.v1" ? JSON.stringify(DAILY_SEED) : null);
+});
 check("bundle id", registration.id === "@dsh-plugins/token-purse");
 const bundleExports = registration.factory((specifier) => {
   if (specifier === "react") return react;
@@ -320,14 +353,20 @@ check("panel carries model label", serialized.indexOf("deepseek-official / deeps
 check("trigger has aria label", serialized.indexOf("trigger.aria") !== -1);
 check("badge shows current off-peak mode", serialized.indexOf("peak.badgeLow") !== -1 && serialized.indexOf("modeChipOn") === -1);
 check("panel labels current pricing", serialized.indexOf("peak.current") !== -1);
-check("panel renders off-peak split + switch", serialized.indexOf("peak.splitOff") !== -1 && serialized.indexOf("peak.splitToggle") !== -1 && serialized.indexOf("peak.splitPeak") === -1);
+const dailyInternals = loadInternals(react, undefined, (sandbox) => {
+  sandbox.window.localStorage.getItem = (key) => (key === "dsh.token-purse.daily.v1" ? JSON.stringify(DAILY_SEED) : null);
+});
+react.reset();
+react.seed({ 1: true });
+const dailySerialized = JSON.stringify(dailyInternals.TokenPurseView({ usage, selection, t }));
+check("panel renders daily rows", dailySerialized.indexOf("daily.title") !== -1 && dailySerialized.indexOf("01-06") !== -1 && dailySerialized.indexOf("01-05") !== -1);
+check("daily rows show amount + tokens", dailySerialized.indexOf("¥1.00") !== -1 && dailySerialized.indexOf("¥2.00") !== -1 && dailySerialized.indexOf("2M") !== -1);
 
 react.reset();
 react.seed({ 1: true });
 const peakInternals = loadInternals(react, monday0900Utc.getTime());
 const peakSerialized = JSON.stringify(peakInternals.TokenPurseView({ usage, selection, t }));
 check("badge shows current peak mode", peakSerialized.indexOf("peak.badgeHigh") !== -1 && peakSerialized.indexOf("modeChipOn") !== -1);
-check("peak split shows only the peak side", peakSerialized.indexOf("peak.splitPeak") !== -1 && peakSerialized.indexOf("peak.splitOff") === -1);
 check("peak render still shows amount", peakSerialized.indexOf("¥6.04") !== -1);
 
 react.reset();
