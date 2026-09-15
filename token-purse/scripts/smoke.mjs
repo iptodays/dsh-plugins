@@ -752,6 +752,40 @@ check(
   flatSerialized.indexOf("TPurse_dayRow") === -1 && flatSerialized.indexOf("TPurse_toneBar") === -1
 );
 
+/* 悬浮色块要能说出「这是哪个会话、占当天多少」。 */
+const toneProps = {
+  usage,
+  selection,
+  t,
+  sessionId: "sA",
+  project: "/w/alpha",
+  sessionsById: { sA: { displayTitle: "会话甲" }, sB: { displayTitle: "会话乙" }, sC: { displayTitle: "会话丙" } }
+};
+react.reset();
+react.seed({ 1: true, 2: "daily", 13: "all", 10: dayStore, 3: "2025-01-06", 16: "sB" });
+const toneSerialized = JSON.stringify(dailyInternals.TokenPurseView(toneProps));
+/* 只取色块热区的宽度：折线的 30 个悬浮格也有 width，不要混进来。 */
+const toneWidths = toneSerialized
+  .split('"className":"TPurse_toneCell"')
+  .slice(1)
+  .map((chunk) => Number((chunk.match(/"width":"([0-9.]+)%"/) || [0, "0"])[1]));
+check(
+  "hovering a colour block names the session and its share of the day",
+  countOf(toneSerialized, "TPurse_toneCell") === 3 &&
+    countOf(toneSerialized, "TPurse_toneTip") === 1 &&
+    /daily\.toneTip\|.*?\\"share\\":\\"51\\"/.test(toneSerialized) &&
+    toneSerialized.indexOf("会话乙") !== -1 &&
+    toneWidths.length === 3 &&
+    Math.abs(toneWidths.reduce((sum, value) => sum + value, 0) - 100) < 0.01
+);
+react.reset();
+react.seed({ 1: true, 2: "daily", 13: "all", 10: dayStore, 3: "2025-01-06" });
+const noToneSerialized = JSON.stringify(dailyInternals.TokenPurseView({ ...toneProps, sessionsById: {} }));
+check(
+  "the bubble only appears while a block is hovered",
+  noToneSerialized.indexOf("TPurse_toneTip") === -1 && countOf(noToneSerialized, "TPurse_toneCell") === 3
+);
+
 /* 有高峰用量的那天才可展开，展开后给出峰/谷明细。 */
 const PEAK_DAILY_SEED = {
   v: 1,

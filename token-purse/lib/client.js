@@ -223,8 +223,12 @@ window.__ModuleLoader__.load({
 		  ".TPurse_breakSub{margin-left:12px;animation:tp-rise .16s ease-out both}" +
 		  ".TPurse_breakSub .TPurse_breakLabel,.TPurse_breakSub .TPurse_breakTokens{color:var(--dsw-alias-label-tertiary)}" +
 		  ".TPurse_breakSub .TPurse_breakAmount{color:var(--dsw-alias-label-secondary)}" +
-		  ".TPurse_toneBar{display:flex;gap:1px;height:6px;margin:3px 0 5px;border-radius:3px;overflow:hidden}" +
+		  ".TPurse_toneWrap{position:relative;margin:3px 0 5px}" +
+		  ".TPurse_toneBar{display:flex;gap:1px;height:6px;border-radius:3px;overflow:hidden}" +
 		  ".TPurse_toneSeg{flex-basis:0;min-width:2px}" +
+		  ".TPurse_toneOverlay{position:absolute;left:0;right:0;top:-4px;height:14px}" +
+		  ".TPurse_toneCell{position:absolute;top:0;bottom:0;cursor:default}" +
+		  ".TPurse_toneTip{position:absolute;bottom:calc(100% + 6px);transform:translateX(-50%);padding:1px 6px;border-radius:6px;background:var(--dsw-specific-menu);box-shadow:var(--dsw-elevation-prominent);color:var(--dsw-alias-label-primary);font-size:10px;line-height:15px;white-space:nowrap;pointer-events:none;font-variant-numeric:tabular-nums;z-index:1;animation:tp-fade .12s ease-out both}" +
 		  ".TPurse_toneDot{flex:none;align-self:center;width:7px;height:7px;border-radius:2px}" +
 		  ".TPurse_toneHead{margin-top:1px}" +
 		  ".TPurse_share{display:block;height:3px;margin:3px 0 0;border-radius:2px;background:var(--dsw-alias-fill-l2);overflow:hidden}" +
@@ -312,6 +316,10 @@ window.__ModuleLoader__.load({
 		  breakAmount: "TPurse_breakAmount",
 		  breakSub: "TPurse_breakSub",
 		  toneBar: "TPurse_toneBar",
+		  toneWrap: "TPurse_toneWrap",
+		  toneOverlay: "TPurse_toneOverlay",
+		  toneCell: "TPurse_toneCell",
+		  toneTip: "TPurse_toneTip",
 		  toneSeg: "TPurse_toneSeg",
 		  toneDot: "TPurse_toneDot",
 		  toneHead: "TPurse_toneHead",
@@ -823,6 +831,33 @@ window.__ModuleLoader__.load({
 		  "--dsw-static-deepseek-500",
 		  "--dsw-static-neutral-500"
 		];
+
+		/**
+		 * 色块条的几何：每段的 grow 与 flexGrow 用它、left/width 用百分比，
+		 * 这样上层的悬停热区与气泡位置和真正渲染出来的色块一致。
+		 */
+		function toneSpans(sessions, dayAmount) {
+		  const grows = sessions.map((session) => Math.max(session.amount, dayAmount * 0.02));
+		  const total = grows.reduce((sum, value) => sum + value, 0);
+		  const spans = [];
+		  let cursor = 0;
+		  for (let at = 0; at < sessions.length; at += 1) {
+		    const width = total > 0 ? (grows[at] / total) * 100 : 100 / sessions.length;
+		    spans.push({
+		      key: sessions[at].key,
+		      index: at,
+		      grow: total > 0 ? grows[at] : 1,
+		      left: cursor,
+		      width,
+		      center: cursor + width / 2,
+		      amount: sessions[at].amount,
+		      tokens: sessions[at].tokens,
+		      share: dayAmount > 0 ? (sessions[at].amount / dayAmount) * 100 : 0
+		    });
+		    cursor += width;
+		  }
+		  return spans;
+		}
 
 		/** 当天第 index 个会话的颜色；同一天内先到先得，超过 6 个才回绕。 */
 		function sessionTone(index) {
@@ -1406,6 +1441,7 @@ window.__ModuleLoader__.load({
 		  const [scope, setScope] = useState(SCOPES[0].key);
 		  const [sparkHover, setSparkHover] = useState(null);
 		  const [openProject, setOpenProject] = useState(null);
+		  const [toneHover, setToneHover] = useState(null);
 		  const rootRef = useRef(null);
 		  const closeTimer = useRef(null);
 
@@ -1525,6 +1561,52 @@ window.__ModuleLoader__.load({
 		  };
 		  const isProjectOpen = (item) =>
 		    openProject === PROJECT_CLOSED ? false : openProject === item.key ? true : allTime.projects.length === 1;
+
+		  /* 展开某一天时的色块条：每段一个悬停热区，气泡给出会话、金额、token 与占比。 */
+		  const toneBarView = (day) => {
+		    const spans = toneSpans(day.sessions, day.amount);
+		    if (spans.length === 0) return null;
+		    const hovered = spans.find((span) => span.key === toneHover);
+		    return h(
+		      "div",
+		      { className: CSS.toneWrap, key: "tones", onMouseLeave: () => setToneHover(null) },
+		      h(
+		        "div",
+		        { className: CSS.toneBar, "aria-hidden": true },
+		        spans.map((span) =>
+		          h("span", {
+		            key: span.key,
+		            className: CSS.toneSeg,
+		            style: { flexGrow: String(span.grow), background: "var(" + sessionTone(span.index) + ")" }
+		          })
+		        )
+		      ),
+		      h(
+		        "div",
+		        { className: CSS.toneOverlay },
+		        spans.map((span) =>
+		          h("span", {
+		            key: span.key,
+		            className: CSS.toneCell,
+		            style: { left: span.left + "%", width: span.width + "%" },
+		            onMouseEnter: () => setToneHover(span.key)
+		          })
+		        )
+		      ),
+		      hovered === undefined
+		        ? null
+		        : h(
+		            "span",
+		            { className: CSS.toneTip, style: { left: "clamp(14%, " + hovered.center + "%, 86%)" } },
+		            t("daily.toneTip", {
+		              label: sessionLabel(hovered.key),
+		              amount: formatMoney(hovered.amount, symbol),
+		              tokens: formatTokens(hovered.tokens),
+		              share: String(Math.round(hovered.share))
+		            })
+		          )
+		    );
+		  };
 
 		  const sparkLast = spark.points.length - 1;
 		  const sparkStep = sparkLast > 0 ? (spark.points[sparkLast].x - spark.points[0].x) / sparkLast : 0;
@@ -1976,20 +2058,7 @@ window.__ModuleLoader__.load({
 		                                day.sessions.length === 0
 		                                  ? null
 		                                  : [
-		                                      h(
-		                                        "div",
-		                                        { className: CSS.toneBar, key: "tones", "aria-hidden": true },
-		                                        day.sessions.map((session, at) =>
-		                                          h("span", {
-		                                            key: session.key,
-		                                            className: CSS.toneSeg,
-		                                            style: {
-		                                              flexGrow: String(Math.max(session.amount, day.amount * 0.02)),
-		                                              background: "var(" + sessionTone(at) + ")"
-		                                            }
-		                                          })
-		                                        )
-		                                      ),
+		                                      toneBarView(day),
 		                                      h(
 		                                        "div",
 		                                        { className: CSS.breakRow + " " + CSS.toneHead, key: "sessionHead" },
@@ -2216,6 +2285,7 @@ window.__ModuleLoader__.load({
 		  "breakdown.unknown": "未知模型",
 		  "breakdown.byModelHint": "本会话各 provider / 模型的用量与花费",
 		  "daily.bySession": "{n} 个会话",
+		  "daily.toneTip": "{label} · {amount} · {tokens} · 占当天 {share}%",
 		  "daily.byModel": "{n} 个模型",
 		  "daily.hint": "按观察时刻归入当天（跨全部会话），保留最近 90 天",
 		  "scope.session": "本会话",
@@ -2285,6 +2355,7 @@ window.__ModuleLoader__.load({
 		  "breakdown.unknown": "Unknown model",
 		  "breakdown.byModelHint": "Tokens and spend per provider / model in this session",
 		  "daily.bySession": "{n} sessions",
+		  "daily.toneTip": "{label} · {amount} · {tokens} · {share}% of the day",
 		  "daily.byModel": "{n} models",
 		  "daily.hint": "Bucketed by observation time across all sessions, last 90 days kept",
 		  "scope.session": "Session",
