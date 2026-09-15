@@ -681,7 +681,32 @@ react.reset();
 react.seed({ 1: false, 12: false });
 const noPanelSerialized = JSON.stringify(modelInternals.TokenPurseView({ usage, selection, t }));
 check("closed panel renders nothing", noPanelSerialized.indexOf("TPurse_panel") === -1 && noPanelSerialized.indexOf("panel.title") === -1);
-check("panel renders the scope and tab switches", (modelSerialized.match(/"role":"tab"/g) || []).length === 5 && modelSerialized.indexOf("TPurse_tabOn") !== -1);
+check(
+  "panel renders the scope (radiogroup) and view (tablist) switches",
+  (modelSerialized.match(/"role":"radio"/g) || []).length === 2 &&
+    (modelSerialized.match(/"role":"tab"/g) || []).length === 3 &&
+    modelSerialized.indexOf("TPurse_tabOn") !== -1
+);
+/* 评审：第二条 tablist 没 label、没有 aria-controls、没有 tabpanel、没有 roving tabindex。 */
+check(
+  "tab pattern is complete (label, controls, tabpanel, roving tabindex)",
+  modelSerialized.indexOf('"role":"tablist"') !== -1 &&
+    modelSerialized.indexOf('"role":"tabpanel"') !== -1 &&
+    modelSerialized.indexOf('"aria-labelledby"') !== -1 &&
+    modelSerialized.indexOf('"aria-controls"') !== -1 &&
+    modelSerialized.indexOf('"tabIndex":-1') !== -1 &&
+    modelSerialized.indexOf("tab.label") !== -1
+);
+check(
+  "scope control exposes mode semantics and is keyboard driven",
+  modelSerialized.indexOf('"role":"radiogroup"') !== -1 &&
+    modelSerialized.indexOf('"aria-checked":true') !== -1 &&
+    cssSource.indexOf("ArrowRight") !== -1
+);
+check(
+  "currency select is named by its visible label",
+  modelSerialized.indexOf('"aria-labelledby"') !== -1 && cssSource.indexOf("min-height:24px") !== -1
+);
 check(
   "settings stay behind the editor",
   modelSerialized.indexOf("TPurse_select") === -1 && modelSerialized.indexOf("TPurse_fxRow") === -1 && modelSerialized.indexOf("TPurse_editButton") !== -1
@@ -790,6 +815,21 @@ check(
 check("day detail stays collapsed by default", dailySerialized.indexOf("TPurse_breakSub") === -1 && dailySerialized.indexOf("peak.group.high") === -1);
 
 /* 点开某一天：按会话分成色块。 */
+/* 范围控件必须真的管住「每日」：否则标题是本会话合计、下面是全局日行。 */
+const scopedStats = internals.dailyStats(dayStore, ledgerConfig, "sA");
+check(
+  "a session-scoped daily view counts only that session",
+  scopedStats.length === 1 &&
+    scopedStats[0].tokens === 3000000 &&
+    Math.abs(scopedStats[0].amount - 2.4) < 1e-9 &&
+    scopedStats[0].sessions.length === 1
+);
+check(
+  "dailyStats without a filter stays global",
+  internals.dailyStats(dayStore, ledgerConfig)[0].sessions.length === 3 &&
+    internals.dailyStats(dayStore, ledgerConfig)[0].tokens === 6000000
+);
+
 const countOf = (haystack, needle) => haystack.split(needle).length - 1;
 react.reset();
 react.seed({ 1: true, 2: "daily", 13: "all", 10: dayStore, 3: "2025-01-06" });
@@ -862,6 +902,24 @@ check(
   "the bubble only appears while a block is hovered",
   noToneSerialized.indexOf("TPurse_toneTip") === -1 && countOf(noToneSerialized, "TPurse_toneCell") === 3
 );
+
+react.reset();
+react.seed({ 1: true, 2: "daily", 13: "session", 10: dayStore, 3: "2025-01-06" });
+const scopedSerialized = JSON.stringify(dailyInternals.TokenPurseView(toneProps));
+check(
+  "the daily tab follows the scope switch",
+  scopedSerialized.indexOf('"3M"') !== -1 &&
+    scopedSerialized.indexOf('"6M"') === -1 &&
+    scopedSerialized.indexOf("daily.hintSession") !== -1
+);
+react.reset();
+react.seed({ 1: true, 2: "daily", 13: "all", 10: dayStore, 3: "2025-01-06" });
+const globalSerialized = JSON.stringify(dailyInternals.TokenPurseView(toneProps));
+check(
+  "all-time scope still shows every session, and says so",
+  globalSerialized.indexOf('"6M"') !== -1 && globalSerialized.indexOf("daily.hintSession") === -1
+);
+
 
 /* 有高峰用量的那天才可展开，展开后给出峰/谷明细。 */
 const PEAK_DAILY_SEED = {
