@@ -301,6 +301,13 @@ The bottom of the panel lists the last few days' tokens and spend (up to 7):
   a marker dot), and focusing the chart then pressing **← / →** steps through the days. Near the
   edges the callout pulls itself in so it never overflows the panel. With a fresh install there
   are few points, so the line looks flat — that is expected until a few weeks of data accumulate.
+- **Open a day for the detail**: a **colour bar** comes first — each session of that day owns one
+  segment, sized by its share of the day. Below it the sessions are listed **by session** (each
+  with a matching colour swatch, labelled with the session title where available and a tooltip
+  giving the project path and session id), then **by model**. The first session of a day is blue,
+  then green / amber / red / deep blue / grey, wrapping after six. The colours come from static
+  ramps that genuinely exist in the theme, so they read on both light and dark. A day with a single
+  session and no peak usage does not expand at all, so no empty nesting appears.
 
 ## By provider and model
 
@@ -385,6 +392,13 @@ otherwise refresh the page.
 
 ## Changelog
 
+- **0.1.15**: opening a day in **Daily** now leads with that day's **sessions**: a **colour bar**
+  splits the day into one segment per session, sized by share, and the rows below list **by
+  session** (each with its colour swatch) and then **by model**. Session labels use the session
+  title where available, with the project path and session id in the tooltip. All six palette
+  entries were checked against the theme — they are static ramps that genuinely exist (the panel
+  had been referencing three tokens that do not: fill-l2, font-mono, yellow-500). Only days with
+  more than one session expand.
 - **0.1.14**: All time gained a **Projects** tab that lists spend per **project → session**:
   a project row shows its directory name, tokens, amount and share bar, and expanding it lists
   each session under it (using the session title when available). The project comes from the
