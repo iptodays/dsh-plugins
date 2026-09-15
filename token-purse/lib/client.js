@@ -225,8 +225,13 @@ window.__ModuleLoader__.load({
 		  ".TPurse_breakSub .TPurse_breakAmount{color:var(--dsw-alias-label-secondary)}" +
 		  ".TPurse_share{display:block;height:3px;margin:3px 0 0;border-radius:2px;background:var(--dsw-alias-fill-l2);overflow:hidden}" +
 		  ".TPurse_shareFill{display:block;height:100%;border-radius:2px;background:var(--dsw-alias-label-tertiary);transform-origin:left center;animation:tp-grow .42s cubic-bezier(.22,1,.36,1) both}" +
-		  ".TPurse_sparkWrap{margin:2px 0 6px}" +
+		  ".TPurse_sparkWrap{position:relative;margin:2px 0 6px}" +
 		  ".TPurse_spark{display:block;width:100%;height:28px;overflow:visible}" +
+		  ".TPurse_sparkOverlay{position:absolute;left:0;right:0;top:0;height:28px}" +
+		  ".TPurse_sparkCell{position:absolute;top:0;bottom:0;display:block}" +
+		  ".TPurse_sparkGuide{position:absolute;top:0;bottom:0;width:1px;margin-left:-.5px;background:var(--dsw-alias-border-l1);pointer-events:none}" +
+		  ".TPurse_sparkDot{position:absolute;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:var(--dsw-alias-label-primary);box-shadow:0 0 0 1.5px var(--dsw-alias-fill-l2);pointer-events:none}" +
+		  ".TPurse_sparkTip{position:absolute;bottom:calc(100% + 3px);transform:translateX(-50%);padding:1px 6px;border-radius:6px;background:var(--dsw-specific-menu);box-shadow:var(--dsw-elevation-prominent);color:var(--dsw-alias-label-primary);font-size:10px;line-height:15px;white-space:nowrap;pointer-events:none;font-variant-numeric:tabular-nums;animation:tp-fade .12s ease-out both}" +
 		  ".TPurse_sparkLine{fill:none;stroke:var(--dsw-alias-label-secondary);stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;animation:tp-draw .9s ease-out .08s forwards}" +
 		  ".TPurse_sparkArea{fill:var(--dsw-alias-fill-l2);stroke:none;animation:tp-fade .5s ease-out .3s both}" +
 		  ".TPurse_sparkNote{display:block;margin-top:2px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:15px;font-variant-numeric:tabular-nums}" +
@@ -248,7 +253,7 @@ window.__ModuleLoader__.load({
 		  "@keyframes tp-grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}" +
 		  "@keyframes tp-fade{from{opacity:0}to{opacity:1}}" +
 		  "@keyframes tp-draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}" +
-		  "@media (prefers-reduced-motion:reduce){.TPurse_panel,.TPurse_panelOut,.TPurse_tabBody,.TPurse_breakSub,.TPurse_sparkLine,.TPurse_sparkArea,.TPurse_shareFill{animation:none!important}}";
+		  "@media (prefers-reduced-motion:reduce){.TPurse_panel,.TPurse_panelOut,.TPurse_tabBody,.TPurse_breakSub,.TPurse_sparkLine,.TPurse_sparkArea,.TPurse_sparkTip,.TPurse_shareFill{animation:none!important}}";
 
 		const CSS = {
 		  root: "TPurse_root",
@@ -314,6 +319,11 @@ window.__ModuleLoader__.load({
 		  panelOut: "TPurse_panelOut",
 		  sparkWrap: "TPurse_sparkWrap",
 		  spark: "TPurse_spark",
+		  sparkOverlay: "TPurse_sparkOverlay",
+		  sparkCell: "TPurse_sparkCell",
+		  sparkGuide: "TPurse_sparkGuide",
+		  sparkDot: "TPurse_sparkDot",
+		  sparkTip: "TPurse_sparkTip",
 		  sparkLine: "TPurse_sparkLine",
 		  sparkArea: "TPurse_sparkArea",
 		  sparkNote: "TPurse_sparkNote",
@@ -1304,6 +1314,7 @@ window.__ModuleLoader__.load({
 		  const [tick, setTick] = useState(0);
 		  const [closing, setClosing] = useState(false);
 		  const [scope, setScope] = useState(SCOPES[0].key);
+		  const [sparkHover, setSparkHover] = useState(null);
 		  const rootRef = useRef(null);
 		  const closeTimer = useRef(null);
 
@@ -1402,6 +1413,25 @@ window.__ModuleLoader__.load({
 		  const scopePeakRows = isAll ? allTime.peakRows : peakRows;
 		  const scopeAmountText = formatMoney(scopeTotal, symbol);
 		  const allTimeText = t("scope.summary", { days: allTime.days, sessions: allTime.sessions, models: allTime.models.length });
+
+		  /* 折线悬浮读数：命中区按数据点均分，鼠标或左右方向键移动游标。 */
+		  const sparkLast = spark.points.length - 1;
+		  const sparkStep = sparkLast > 0 ? (spark.points[sparkLast].x - spark.points[0].x) / sparkLast : 0;
+		  const sparkPoint = sparkHover === null ? null : spark.points[sparkHover] || null;
+		  const moveSparkHover = (delta) => {
+		    if (sparkLast < 0) return;
+		    const from = sparkHover === null ? sparkLast : sparkHover;
+		    setSparkHover(Math.min(Math.max(from + delta, 0), sparkLast));
+		  };
+		  const onSparkKey = (event) => {
+		    if (event.key === "ArrowLeft") {
+		      event.preventDefault();
+		      moveSparkHover(-1);
+		    } else if (event.key === "ArrowRight") {
+		      event.preventDefault();
+		      moveSparkHover(1);
+		    }
+		  };
 
 		  const beginEdit = () => {
 		    setDraft(JSON.stringify(config, null, 2));
@@ -1687,7 +1717,13 @@ window.__ModuleLoader__.load({
 		                                viewBox: "0 0 " + SPARK_VIEW_W + " " + SPARK_VIEW_H,
 		                                preserveAspectRatio: "none",
 		                                role: "img",
-		                                "aria-label": t("spark.aria", { days: SPARK_DAYS, max: formatMoney(spark.max, symbol) })
+		                                "aria-label": t("spark.aria", { days: SPARK_DAYS, max: formatMoney(spark.max, symbol) }),
+		                                tabIndex: 0,
+		                                onFocus: () => {
+		                                  if (sparkHover === null && sparkLast >= 0) setSparkHover(sparkLast);
+		                                },
+		                                onBlur: () => setSparkHover(null),
+		                                onKeyDown: onSparkKey
 		                              },
 		                              h("path", { className: CSS.sparkArea, d: sparklineArea(spark.points, SPARK_VIEW_H, SPARK_PAD) }),
 		                              h("path", {
@@ -1696,6 +1732,32 @@ window.__ModuleLoader__.load({
 		                                pathLength: "1",
 		                                vectorEffect: "non-scaling-stroke"
 		                              })
+		                            ),
+		                            h(
+		                              "div",
+		                              { className: CSS.sparkOverlay, onMouseLeave: () => setSparkHover(null) },
+		                              spark.points.map((point, index) =>
+		                                h("span", {
+		                                  key: point.day,
+		                                  className: CSS.sparkCell,
+		                                  style: { left: point.x - sparkStep / 2 + "%", width: sparkStep + "%" },
+		                                  onMouseEnter: () => setSparkHover(index)
+		                                })
+		                              ),
+		                              sparkPoint === null ? null : h("span", { className: CSS.sparkGuide, style: { left: sparkPoint.x + "%" } }),
+		                              sparkPoint === null
+		                                ? null
+		                                : h("span", {
+		                                    className: CSS.sparkDot,
+		                                    style: { left: sparkPoint.x + "%", top: (sparkPoint.y / SPARK_VIEW_H) * 100 + "%" }
+		                                  }),
+		                              sparkPoint === null
+		                                ? null
+		                                : h(
+		                                    "span",
+		                                    { className: CSS.sparkTip, style: { left: "clamp(14%, " + sparkPoint.x + "%, 86%)" } },
+		                                    t("spark.tip", { day: formatDayKey(sparkPoint.day), amount: formatMoney(sparkPoint.amount, symbol) })
+		                                  )
 		                            ),
 		                            h(
 		                              "span",
@@ -1927,6 +1989,7 @@ window.__ModuleLoader__.load({
 		  "scope.label": "统计范围",
 		  "scope.summary": "{days} 天 · {sessions} 个会话 · {models} 个模型",
 		  "scope.empty": "还没有累计记录，用几个会话后这里会有数据。",
+		  "spark.tip": "{day} · {amount}",
 		  "tab.model": "模型",
 		  "tab.peak": "峰谷",
 		  "tab.daily": "每日",
@@ -1987,6 +2050,7 @@ window.__ModuleLoader__.load({
 		  "scope.label": "Scope",
 		  "scope.summary": "{days} days · {sessions} sessions · {models} models",
 		  "scope.empty": "No accumulated records yet — this fills in after a few sessions.",
+		  "spark.tip": "{day} · {amount}",
 		  "tab.model": "Models",
 		  "tab.peak": "Peak",
 		  "tab.daily": "Daily",

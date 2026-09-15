@@ -1,6 +1,6 @@
 {
   "name": "@dsh-plugins/token-purse",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "TokenPurse（鲸囊）— 把 DSH 会话累计消耗的 token 折算成大致现金，显示在输入框下方的会话统计行。",
   "type": "module",
   "license": "MIT",

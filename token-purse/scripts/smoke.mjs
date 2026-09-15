@@ -581,6 +581,31 @@ check(
 );
 check("all-time scope drops the session-only source chip", allTimeSerialized.indexOf("rate.source.") === -1);
 check("session scope still shows the session total", dailySerialized.indexOf("≈¥3.02") !== -1 && dailySerialized.indexOf("rate.source.") !== -1);
+
+/* 折线悬浮读数。 */
+check(
+  "sparkline has one hover cell per day and no tooltip when idle",
+  (dailySerialized.match(/TPurse_sparkCell/g) || []).length === internals.SPARK_DAYS &&
+    dailySerialized.indexOf("TPurse_sparkTip") === -1 &&
+    dailySerialized.indexOf("TPurse_sparkGuide") === -1
+);
+react.reset();
+react.seed({ 1: true, 2: "daily", 14: internals.SPARK_DAYS - 1 });
+const hoverSerialized = JSON.stringify(dailyInternals.TokenPurseView({ usage, selection, t }));
+const hoverTip = hoverSerialized.match(/spark\.tip\|.*?\\"day\\":\\"(\d\d-\d\d)\\",\\"amount\\":\\"([^\\"]+)\\"/);
+check(
+  "sparkline hover renders guide, dot and a day/amount tooltip",
+  hoverSerialized.indexOf("TPurse_sparkTip") !== -1 &&
+    hoverSerialized.indexOf("TPurse_sparkGuide") !== -1 &&
+    hoverSerialized.indexOf("TPurse_sparkDot") !== -1 &&
+    hoverTip !== null &&
+    hoverTip[1] === "01-06" &&
+    hoverTip[2] === "¥1.00"
+);
+check(
+  "sparkline is keyboard reachable",
+  dailySerialized.indexOf('"tabIndex":0') !== -1 && cssSource.indexOf("ArrowLeft") !== -1 && cssSource.indexOf("ArrowRight") !== -1
+);
 check("day detail stays collapsed by default", dailySerialized.indexOf("TPurse_breakSub") === -1 && dailySerialized.indexOf("peak.group.high") === -1);
 
 /* 有高峰用量的那天才可展开，展开后给出峰/谷明细。 */

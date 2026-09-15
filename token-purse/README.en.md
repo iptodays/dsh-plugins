@@ -67,6 +67,7 @@ The panel does not just pop in. Every transition is short and never blocks input
 - **Expanding a day**: its detail fades in (160ms).
 - **Badge / chevron / buttons**: background and colour transitions (120–160ms); the
   chevron rotates 180°.
+- **Sparkline callout**: fades in on appear (120ms).
 
 All of it is plain CSS keyframes and transitions — **no animation library** — and it
 honours `prefers-reduced-motion: reduce`, which switches every animation off.
@@ -273,9 +274,11 @@ The bottom of the panel lists the last few days' tokens and spend (up to 7):
   plugin was enabled lands on the day it was first observed. Deleting that key resets it.
 - Under the heading sits a **last-30-days spend sparkline** (plain SVG, no axes). Days with no
   usage count as **0**, so the shape shows real gaps instead of a misleading straight line
-  between distant points; the peak and daily average are labelled next to it. It plots spend
-  only and carries an accessible label. With a fresh install there are few points, so the line
-  looks flat — that is expected until a few weeks of data accumulate.
+  between distant points; the peak and daily average are labelled next to it. It plots spend only.
+- **The line is readable**: hovering shows that day's **date and amount** (with a guide line and
+  a marker dot), and focusing the chart then pressing **← / →** steps through the days. Near the
+  edges the callout pulls itself in so it never overflows the panel. With a fresh install there
+  are few points, so the line looks flat — that is expected until a few weeks of data accumulate.
 
 ## By provider and model
 
@@ -360,6 +363,9 @@ otherwise refresh the page.
 
 ## Changelog
 
+- **0.1.12**: the sparkline is **readable** — hovering shows the day's date and amount with a
+  guide line and marker; focusing it and using ← / → steps through days. The callout pulls in
+  near the edges and fades in.
 - **0.1.11**: a **scope switch** (**Session / All time**). All time folds the daily store
   (90 days, every session) into the total, the token buckets, and the per-model and
   per-bracket breakdowns, labelled with the days / sessions / models it covers. No new
