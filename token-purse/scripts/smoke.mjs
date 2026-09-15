@@ -111,7 +111,7 @@ function loadInternals(react, now, extra) {
   const sandbox = makeSandbox(react, extra, now);
   const source =
     readFileSync(join(root, "src", "client.js"), "utf8") +
-    "\nexports.__test = { rateUsage, rateLedger, resolveRates, mergeConfig, formatMoney, formatTokens, formatRate, DEFAULT_CONFIG, TokenPurseView, matchCurrencyPreset, findCurrencyPreset, fetchUsdRate, parsePeakWindow, parsePeak, isPeakAt, ratesAt, emptyLedger, syncLedger, migrateConfigV1, rateSource, CURRENCY_PRESETS, localDayKey, sessionModelRows, formatModelLabel, sharePercent, legacyCurrencyConfig, migrateLegacyCurrency, readConfig, dailySeries, sparklinePoints, sparklineLine, sparklineArea, SPARK_DAYS, aggregateDaily, sessionTone, SESSION_TONES, splitByPeak, ledgerSegments, priceSegment, normalizePeakFlag, sessionDayRows, mergeSessionDayRows, dailyStats, normalizeDaily, emptyDaily, formatDayKey };\n";
+    "\nexports.__test = { rateUsage, rateLedger, resolveRates, mergeConfig, formatMoney, formatTokens, formatRate, DEFAULT_CONFIG, TokenPurseView, matchCurrencyPreset, findCurrencyPreset, fetchUsdRate, parsePeakWindow, parsePeak, isPeakAt, ratesAt, emptyLedger, syncLedger, migrateConfigV1, rateSource, CURRENCY_PRESETS, localDayKey, sessionModelRows, formatModelLabel, sharePercent, legacyCurrencyConfig, migrateLegacyCurrency, readConfig, dailySeries, sparklinePoints, sparklineLine, sparklineArea, SPARK_DAYS, aggregateDaily, sessionTone, SESSION_TONES, splitByPeak, ledgerSegments, priceSegment, normalizePeakFlag, sessionDayRows, mergeSessionDayRows, dailyStats, normalizeDaily, emptyDaily, formatDayKey, withModelRate };\n";
   vm.runInContext(source, sandbox);
   return sandbox.exports.__test;
 }
@@ -548,7 +548,11 @@ const ctx = {
 bundleExports.apply(ctx);
 
 check("locale namespace", captured.ns === "token-purse");
-check("locale zh + en", captured.dicts.zh["panel.title"] === "Token 花费" && captured.dicts.en["panel.title"] === "Token spend");
+check(
+  "locale zh + en, and the product name is finally on screen",
+  captured.dicts.zh["panel.title"] === "鲸囊 · Token 花费" &&
+    captured.dicts.en["panel.title"] === "TokenPurse · Token spend"
+);
 check(
   "slot spec targets composer stats dock",
   captured.spec.name === "conversation.composer.dock" && captured.spec.id === "token-purse" && captured.spec.order === 100
@@ -558,6 +562,12 @@ check(
 
 console.log("component render");
 const cssSource = readFileSync(join(root, "src", "client.js"), "utf8");
+/* 护栏：样式规则加了、class 映射忘了加时，className 会渲染成字面量 "undefined"，
+   样式静默失效。本项目已经踩过一次（footNote / modelValuePlain / peakNoteTop）。 */
+const usedCssNames = [...new Set([...cssSource.matchAll(/CSS\.([A-Za-z0-9_]+)/g)].map((m) => m[1]))];
+const mappedCssNames = new Set([...cssSource.matchAll(/^\s+([A-Za-z0-9_]+):\s*"TPurse_/gm)].map((m) => m[1]));
+const unmappedCssNames = usedCssNames.filter((key) => !mappedCssNames.has(key));
+check("every CSS.<name> reference has a class mapping", unmappedCssNames.length === 0, unmappedCssNames.join(", "));
 check(
   "css ships entrance / reveal keyframes",
   ["@keyframes tp-panel-in", "@keyframes tp-panel-out", "@keyframes tp-rise", "@keyframes tp-draw", "@keyframes tp-grow", "@keyframes tp-fade"].every(
@@ -652,7 +662,16 @@ check("badge renders amount", serialized.indexOf("≈") !== -1 && serialized.ind
 check("panel carries model label", serialized.indexOf("deepseek-official / deepseek-flash") !== -1);
 check("trigger has aria label", serialized.indexOf("trigger.aria") !== -1);
 check("badge shows current off-peak mode", serialized.indexOf("peak.badgeLow") !== -1 && serialized.indexOf("modeChipOn") === -1);
-check("panel labels current pricing", serialized.indexOf("peak.current") !== -1);
+/* 评审 P2：37px 的常驻说明只在谈到峰谷时才有意义，已经搬进「峰谷」页签。 */
+check("the standing peak note is gone from the default tab", serialized.indexOf("peak.current") === -1);
+check("the estimate disclaimer moved into the total's tooltip", serialized.indexOf('"title":"panel.note"') !== -1);
+react.reset();
+react.seed({ 1: true, 2: "peak" });
+check(
+  "the peak tab is where pricing now explains itself",
+  JSON.stringify(internals.TokenPurseView({ usage, selection, t })).indexOf("peak.current") !== -1
+);
+
 const LEDGER_SEED = {
   observed: true,
   seen: { uncachedInputTokens: 1000000, cacheReadTokens: 1000000, cacheWriteTokens: 0, outputTokens: 500000 },
@@ -713,12 +732,58 @@ check(
 );
 
 react.reset();
-react.seed({ 1: true, 2: "model", 4: true });
+const RATE_DRAFT = JSON.stringify({
+  models: { "packyapi/deepseek-flash": { input: 1, cacheRead: 0.1, cacheWrite: 1, output: 4 } }
+});
+/* 直接注入 editing 会跳过 beginEdit，所以草稿也要一起给。 */
+react.seed({ 1: true, 2: "model", 4: true, 5: RATE_DRAFT });
 const editingSerialized = JSON.stringify(modelInternals.TokenPurseView({ usage, selection, t }));
+/* 评审 P2：原来只有一大块 JSON textarea。现在常用字段是结构化表格，
+   原始 JSON 退到「高级 JSON」后面。 */
 check(
-  "editor holds the currency settings",
-  editingSerialized.indexOf("TPurse_select") !== -1 && editingSerialized.indexOf("TPurse_fxRow") !== -1 && editingSerialized.indexOf("TPurse_textarea") !== -1
+  "editor holds the currency settings and a structured rate table",
+  editingSerialized.indexOf("TPurse_select") !== -1 &&
+    editingSerialized.indexOf("TPurse_fxRow") !== -1 &&
+    editingSerialized.indexOf("TPurse_rateTable") !== -1 &&
+    editingSerialized.indexOf("packyapi/deepseek-flash") !== -1 &&
+    editingSerialized.indexOf("TPurse_textarea") === -1 &&
+    editingSerialized.indexOf("rates.jsonShow") !== -1
 );
+check(
+  "the editor offers cancel, and clearing is not one click away",
+  editingSerialized.indexOf("rates.cancel") !== -1 && editingSerialized.indexOf("rates.resetConfirm") === -1
+);
+react.reset();
+react.seed({ 1: true, 2: "model", 4: true, 21: true });
+const jsonOpenSerialized = JSON.stringify(modelInternals.TokenPurseView({ usage, selection, t }));
+check(
+  "the raw JSON is one disclosure away",
+  jsonOpenSerialized.indexOf("TPurse_textarea") !== -1 && jsonOpenSerialized.indexOf("rates.jsonHide") !== -1
+);
+react.reset();
+react.seed({ 1: true, 2: "model", 4: true, 22: true });
+const confirmResetSerialized = JSON.stringify(modelInternals.TokenPurseView({ usage, selection, t }));
+check("clearing the config asks for confirmation", confirmResetSerialized.indexOf("rates.resetConfirm") !== -1);
+/* 表格回写草稿是这段改动里唯一有真实副作用的地方，单独测一遍。 */
+const rateBefore = { models: { a: { input: 1, cacheRead: 0.1, cacheWrite: 1, output: 4 } }, peak: { multiplier: 2 } };
+const rateAfter = JSON.parse(internals.withModelRate(JSON.parse(JSON.stringify(rateBefore)), "a", "input", "2.5"));
+check(
+  "editing one rate changes only that field",
+  rateAfter.models.a.input === 2.5 &&
+    rateAfter.models.a.output === 4 &&
+    rateAfter.models.a.cacheRead === 0.1 &&
+    rateAfter.peak.multiplier === 2
+);
+check(
+  "clearing a rate field stays empty instead of becoming 0",
+  JSON.parse(internals.withModelRate(JSON.parse(JSON.stringify(rateBefore)), "a", "output", "")).models.a.output === ""
+);
+check(
+  "the rewrite is still valid, pretty-printed JSON",
+  internals.withModelRate(JSON.parse(JSON.stringify(rateBefore)), "a", "input", "3").indexOf("\n  ") !== -1
+);
+react.reset();
+react.seed({ 1: true, 2: "model", 4: true });
 
 check(
   "model tab hides the other breakdowns",
@@ -918,6 +983,16 @@ const globalSerialized = JSON.stringify(dailyInternals.TokenPurseView(toneProps)
 check(
   "all-time scope still shows every session, and says so",
   globalSerialized.indexOf('"6M"') !== -1 && globalSerialized.indexOf("daily.hintSession") === -1
+);
+/* 评审 P2：覆盖口径说明从 42px 的段落降级成总额下方的 10px 脚注；
+   累计副标题是散文，不该用等宽字体。 */
+check(
+  "the coverage caveat is a footnote, not a paragraph",
+  globalSerialized.indexOf('"className":"TPurse_footNote"') !== -1
+);
+check(
+  "the accumulated subtitle is prose, not a code path",
+  globalSerialized.indexOf("TPurse_modelValuePlain") !== -1
 );
 
 

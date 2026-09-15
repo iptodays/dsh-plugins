@@ -15,10 +15,10 @@ output), their token counts and subtotals, plus an inline rate editor.
 ## What it looks like
 
 - Idle: a compact **≈$0.0123** badge; the **≈** marks it as an estimate.
-- Click: a dropdown listing each bucket, the priced model, the total token count
-  and a short disclaimer.
-- Bottom of the panel: **Edit rates** — expands into both the JSON rate override and
-  the currency / FX settings, stored in the browser's localStorage.
+- Click: a dropdown listing each bucket, the priced model and the total token count.
+- Bottom of the panel: **Edit rates** — the currency / FX rows plus a **rate table with
+  one row per provider/model** (edit the numbers directly); the raw JSON sits behind
+  **Advanced JSON**. Stored in the browser's localStorage.
 - Nothing renders until the session has billed at least one token, so an empty
   session stays clean.
 
@@ -28,13 +28,14 @@ The same total can be broken down three ways (**Models / Peak / Daily**). Showin
 three at once made the popover very tall, so they are **segmented tabs — only one is
 rendered at a time**. From top to bottom:
 
-1. the **total**, current model, and rate source;
+1. the **total** (hover it for the scope caveat and the disclaimer), the current model and
+   the rate source;
 2. the **scope**: Session / All time;
 3. **token buckets** (input / cache read / output + total);
-4. the **current bracket** (peak / off-peak, with window and multiplier);
-5. the **segmented tabs** — Models / Peak / Daily, plus **Projects** in the All time scope —
-   only the active one is rendered;
-6. the disclaimer, then **Edit rates**.
+4. the **view tabs** — Models / Peak / Daily, plus **Projects** in the All time scope —
+   only the active one is rendered; the current bracket (peak / off-peak, window and
+   multiplier) lives in the **Peak** tab;
+5. **Edit rates**.
 
 ### Scope: Session / All time
 
@@ -199,8 +200,10 @@ instead of pretending to be exact.
 
 Override either way:
 
-1. **Recommended**: open the badge → **Edit rates**, edit the JSON, save. Stored
-   under the **dsh.token-purse.config.v2** localStorage key (v1 migrates on read).
+1. **Recommended**: open the badge → **Edit rates**, change the numbers in the rate table
+   and save; expand **Advanced JSON** when you need fields the table does not cover (such
+   as **peak** or **fx**). Stored under the **dsh.token-purse.config.v2** localStorage key
+   (v1 migrates on read).
 2. Edit **DEFAULT_MODELS** / **FALLBACK_RATES** at the top of **src/client.js**,
    then run **npm run build**.
 
@@ -394,6 +397,36 @@ otherwise refresh the page.
 
 ## Changelog
 
+- **0.1.20**: cut the **standing prose** and rebuilt the **rate editor**, both per the critique.
+  - The coverage caveat dropped from a 42px paragraph to a 10px footnote under the total,
+    minus the part that duplicated the subtitle; "estimate, not a bill" moved into the
+    total's **title**.
+  - The peak window and multiplier moved into the **Peak** tab (the trigger's tooltip already
+    carried them) instead of sitting in every view.
+  - **Edit rates** is no longer just a JSON box: common fields became a **table with one row
+    per provider/model** (input / cache read / cache write / output), and the raw JSON moved
+    behind **Advanced JSON**.
+  - Added **Cancel** — the only ways out used to be Save or Reset, so abandoning an edit meant
+    wiping the config; **Reset** now needs two clicks; an exchange rate of ≤ 0 reports an error
+    instead of silently becoming 1; JSON errors include the parse position.
+  - The accumulated subtitle is prose, so it no longer uses the mono font; the panel title now
+    carries the product name **TokenPurse**.
+- **0.1.19**: **accessibility** fixes (critique P1).
+  - The two identical-looking segmented bars actually mean different things: **Scope** is now a
+    radiogroup (it switches a mode, not a panel) and **View** completes the tabs pattern —
+    aria-label, aria-controls, tabpanel + aria-labelledby, roving tabindex.
+  - Both respond to **← → / Home / End**, moving selection and focus together, so **Tab** stops
+    on the current option only.
+  - The panel went from role=dialog to disclosure semantics — it is neither modal nor does it
+    take focus.
+  - The sparkline gained a **:focus-visible** outline, and its readout is announced by a
+    permanent live region: the bubble only mounts while hovering, and screen readers usually
+    do not announce a region that appears together with its content.
+  - Hit targets were brought up to 24px (WCAG 2.2 SC 2.5.8); the currency select gained an
+    accessible name; error-text and label-tertiary contrast issues were fixed.
+- **0.1.18**: the panel is capped at **max-height: min(72vh, 600px)** with a sticky header and
+  scrolls internally instead of growing off-screen; the colour-block bubble no longer overflows
+  sideways; motion follows **prefers-reduced-motion**.
 - **0.1.17**: the colour bar is now **hoverable** — pointing at a segment shows a bubble with the
   session, amount, tokens and that day's share. The hit area is a 14px transparent layer over the
   6px bar (easier to hit than the bar itself), positioned from the same percentages that drive
