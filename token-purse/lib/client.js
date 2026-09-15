@@ -159,7 +159,7 @@ window.__ModuleLoader__.load({
 
 		const CSS_TEXT =
 		  ".TPurse_root{position:relative;display:inline-flex;align-items:center}" +
-		  ".TPurse_srOnly{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.TPurse_trigger{display:inline-flex;align-items:center;gap:3px;height:28px;min-height:24px;padding:0 8px;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px;cursor:pointer;font-variant-numeric:tabular-nums;transition:background-color .14s ease,color .14s ease}" +
+		  ".TPurse_srOnly{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.TPurse_jsonToggle{align-self:flex-start;margin-top:8px}.TPurse_rateTable{display:flex;flex-direction:column;gap:5px;margin-top:8px}.TPurse_rateRow{display:grid;grid-template-columns:1fr 52px 52px 52px 52px;gap:4px;align-items:center}.TPurse_rateHead{margin-bottom:1px}.TPurse_rateKey{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary);font-family:var(--dsw-font-markdown-code-font-family);font-size:10px}.TPurse_rateFieldLabel{color:var(--dsw-alias-label-secondary);font-size:9px;text-align:center;overflow:hidden;white-space:nowrap}.TPurse_trigger{display:inline-flex;align-items:center;gap:3px;height:28px;min-height:24px;padding:0 8px;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px;cursor:pointer;font-variant-numeric:tabular-nums;transition:background-color .14s ease,color .14s ease}" +
 		  ".TPurse_trigger:hover,.TPurse_trigger:focus-visible{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}" +
 		  ".TPurse_approx{opacity:.75}" +
 		  ".TPurse_amount{font-weight:500;color:var(--dsw-alias-label-secondary)}" +
@@ -170,7 +170,7 @@ window.__ModuleLoader__.load({
 		  ".TPurse_title{color:var(--dsw-alias-label-secondary)}" +
 		  ".TPurse_total{margin-left:auto;color:var(--dsw-alias-label-primary);font-weight:600;font-variant-numeric:tabular-nums}" +
 		  ".TPurse_modelLine{display:flex;align-items:baseline;gap:8px;margin-top:2px;color:var(--dsw-alias-label-secondary)}" +
-		  ".TPurse_modelValue{margin-left:auto;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary);font-family:var(--dsw-font-markdown-code-font-family);font-size:11px}" +
+		  ".TPurse_modelValue{margin-left:auto;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary);font-family:var(--dsw-font-markdown-code-font-family);font-size:11px}.TPurse_modelValuePlain{font-family:inherit}" +
 		  ".TPurse_rows{margin:10px 0 0;padding:8px 0 0;border-top:1px solid var(--dsw-alias-border-l1)}" +
 		  ".TPurse_row{display:flex;align-items:center;gap:12px;padding:3px 0}" +
 		  ".TPurse_row dt{color:var(--dsw-alias-label-secondary)}" +
@@ -205,7 +205,7 @@ window.__ModuleLoader__.load({
 		  ".TPurse_fxButton:disabled{opacity:.5;cursor:default}" +
 		  ".TPurse_fxAuto{display:inline-flex;align-items:center;gap:4px;min-height:24px;cursor:pointer}" +
 		  ".TPurse_fxNote{margin-top:5px;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px;word-break:break-word}" +
-		  ".TPurse_peakNote{display:flex;align-items:flex-start;gap:6px;margin-top:10px;padding-top:8px;border-top:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px}" +
+		  ".TPurse_peakNoteTop{margin-top:0;padding-top:0;border-top:0}.TPurse_footNote{margin-top:2px;color:var(--dsw-alias-label-secondary);font-size:10px;line-height:14px}.TPurse_peakNote{display:flex;align-items:flex-start;gap:6px;margin-top:10px;padding-top:8px;border-top:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px}" +
 		  ".TPurse_peakChip{flex:none;padding:1px 6px;border-radius:999px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}" +
 		  ".TPurse_peakChipOn{background:var(--dsw-static-amber-400);color:var(--dsw-static-amber-900)}" +
 		  ".TPurse_peakText{min-width:0;word-break:break-word}" +
@@ -276,12 +276,14 @@ window.__ModuleLoader__.load({
 		  total: "TPurse_total",
 		  modelLine: "TPurse_modelLine",
 		  modelValue: "TPurse_modelValue",
+		  modelValuePlain: "TPurse_modelValuePlain",
 		  rows: "TPurse_rows",
 		  row: "TPurse_row",
 		  rowTotal: "TPurse_rowTotal",
 		  tokens: "TPurse_tokens",
 		  sub: "TPurse_sub",
 		  note: "TPurse_note",
+		  footNote: "TPurse_footNote",
 		  editButton: "TPurse_editButton",
 		  editor: "TPurse_editor",
 		  textarea: "TPurse_textarea",
@@ -300,6 +302,7 @@ window.__ModuleLoader__.load({
 		  fxAuto: "TPurse_fxAuto",
 		  fxNote: "TPurse_fxNote",
 		  peakNote: "TPurse_peakNote",
+		  peakNoteTop: "TPurse_peakNoteTop",
 		  peakChip: "TPurse_peakChip",
 		  peakChipOn: "TPurse_peakChipOn",
 		  peakText: "TPurse_peakText",
@@ -322,6 +325,12 @@ window.__ModuleLoader__.load({
 		  toneTip: "TPurse_toneTip",
 		  toneTipText: "TPurse_toneTipText",
 		  srOnly: "TPurse_srOnly",
+		  jsonToggle: "TPurse_jsonToggle",
+		  rateTable: "TPurse_rateTable",
+		  rateRow: "TPurse_rateRow",
+		  rateHead: "TPurse_rateHead",
+		  rateKey: "TPurse_rateKey",
+		  rateFieldLabel: "TPurse_rateFieldLabel",
 		  toneSeg: "TPurse_toneSeg",
 		  toneDot: "TPurse_toneDot",
 		  toneHead: "TPurse_toneHead",
@@ -503,6 +512,18 @@ window.__ModuleLoader__.load({
 		    auto
 		  };
 		  return parsed;
+		}
+
+		const RATE_FIELDS = ["input", "cacheRead", "cacheWrite", "output"];
+
+		/*
+		 * 结构化费率表改一条记录，然后把整份配置重新序列化回草稿。
+		 * 保存路径仍然只有 saveEdit 一条——表格只是让草稿更好写，不碰写入逻辑。
+		 */
+		function withModelRate(parsed, key, field, raw) {
+		  const models = Object.assign({}, parsed.models);
+		  models[key] = Object.assign({}, models[key], { [field]: raw === "" ? "" : Number(raw) });
+		  return JSON.stringify(Object.assign({}, parsed, { models }), null, 2);
 		}
 
 		function readConfig() {
@@ -1455,6 +1476,10 @@ window.__ModuleLoader__.load({
 		  const viewTabRefs = useRef({});
 		  const rootRef = useRef(null);
 		  const closeTimer = useRef(null);
+		  /* 后加的状态统一放末尾：测试按序号注入，中间插入会错位。 */
+		  const [showJson, setShowJson] = useState(false);
+		  const [confirmReset, setConfirmReset] = useState(false);
+		  const [perUsdIssue, setPerUsdIssue] = useState(false);
 
 		  /* 关闭时先播完退场动画，再卸载面板。 */
 		  const closePanel = () => {
@@ -1698,7 +1723,17 @@ window.__ModuleLoader__.load({
 		  const beginEdit = () => {
 		    setDraft(JSON.stringify(config, null, 2));
 		    setInvalid(false);
+		    setConfirmReset(false);
+		    setPerUsdIssue(false);
 		    setEditing(true);
+		  };
+		  /* 此前只有「保存」和「恢复默认」：想放弃改动就只能恢复默认，等于顺手清掉配置。 */
+		  const cancelEdit = () => {
+		    setEditing(false);
+		    setInvalid(false);
+		    setConfirmReset(false);
+		    setPerUsdIssue(false);
+		    setShowJson(false);
 		  };
 		  const saveEdit = () => {
 		    let parsed;
@@ -1724,6 +1759,7 @@ window.__ModuleLoader__.load({
 		    setConfig(fresh);
 		    setDraft(JSON.stringify(fresh, null, 2));
 		    setInvalid(false);
+		    setConfirmReset(false);
 		  };
 		  const updateCurrency = (patch) => {
 		    const merged = mergeConfig(config, { currency: patch });
@@ -1776,6 +1812,22 @@ window.__ModuleLoader__.load({
 		        ? t("peak.high", { factor: peakInfo.multiplier })
 		        : t("peak.low");
 
+		  /* 草稿能解析时，把常用费率摊成输入框；解析失败则只保留高级 JSON 与报错。 */
+		  let draftConfig = null;
+		  try {
+		    draftConfig = JSON.parse(draft);
+		  } catch (draftParseError) {
+		    draftConfig = null;
+		  }
+		  let draftError = null;
+		  if (invalid) {
+		    try {
+		      JSON.parse(draft);
+		    } catch (parseError) {
+		      draftError = parseError instanceof Error ? parseError.message : String(parseError);
+		    }
+		  }
+
 		  return h(
 		    "span",
 		    { className: CSS.root, ref: rootRef },
@@ -1826,7 +1878,7 @@ window.__ModuleLoader__.load({
 		            "div",
 		            { className: CSS.head },
 		            h("span", { className: CSS.title, id: titleId }, t("panel.title")),
-		            h("span", { className: CSS.total }, "≈" + scopeAmountText)
+		            h("span", { className: CSS.total, title: t("panel.note") }, "≈" + scopeAmountText)
 		          ),
 		          h(
 		            "div",
@@ -1844,7 +1896,11 @@ window.__ModuleLoader__.load({
 		                  },
 		                  t("rate.source." + rated.source)
 		                ),
-		            h("span", { className: CSS.modelValue, title: isAll ? allTimeText : modelText }, isAll ? allTimeText : modelText)
+		            h(
+		              "span",
+		              { className: isAll ? CSS.modelValue + " " + CSS.modelValuePlain : CSS.modelValue, title: isAll ? allTimeText : modelText },
+		              isAll ? allTimeText : modelText
+		            )
 		          ),
 		          h(
 		            "div",
@@ -1880,20 +1936,13 @@ window.__ModuleLoader__.load({
 		              h("dd", null, h("span", { className: CSS.tokens }, formatTokens(scopeTokens)))
 		            )
 		          ),
-		          isAll ? h("div", { className: CSS.note }, t(allTime.days === 0 ? "scope.empty" : "scope.coverage")) : null,
-		          rated.peak === null || rated.peak === undefined
-		            ? null
-		            : h(
+		          isAll
+		            ? h(
 		                "div",
-		                { className: CSS.peakNote },
-		                h("span", { className: CSS.peakLabel }, t("peak.current")),
-		                h(
-		                  "span",
-		                  { className: CSS.peakChip + (rated.peak.active ? " " + CSS.peakChipOn : "") },
-		                  rated.peak.active ? t("peak.high", { factor: rated.peak.multiplier }) : t("peak.low")
-		                ),
-		                h("span", { className: CSS.peakText }, t("peak.note", { windows: rated.peak.windows.join(" / "), timezone: rated.peak.timezone }))
-		              ),
+		                { className: allTime.days === 0 ? CSS.note : CSS.footNote },
+		                t(allTime.days === 0 ? "scope.empty" : "scope.coverage")
+		              )
+		            : null,
 		          h(
 		            "div",
 		            { className: CSS.tabs, role: "tablist", "aria-label": t("tab.label") },
@@ -1981,9 +2030,27 @@ window.__ModuleLoader__.load({
 		                    )
 		                  )
 		              : shownTab === "peak"
-		                ? scopePeakRows.length === 0
-		                  ? h("div", { className: CSS.breakRow }, h("span", { className: CSS.peakLine }, t("peak.splitNone")))
-		                  : scopePeakRows.map((row) =>
+		                ? [
+		                    rated.peak === null || rated.peak === undefined
+		                      ? null
+		                      : h(
+		                          "div",
+		                          { className: CSS.peakNote + " " + CSS.peakNoteTop, key: "peakNote" },
+		                          h("span", { className: CSS.peakLabel }, t("peak.current")),
+		                          h(
+		                            "span",
+		                            { className: CSS.peakChip + (rated.peak.active ? " " + CSS.peakChipOn : "") },
+		                            rated.peak.active ? t("peak.high", { factor: rated.peak.multiplier }) : t("peak.low")
+		                          ),
+		                          h("span", { className: CSS.peakText }, t("peak.note", { windows: rated.peak.windows.join(" / "), timezone: rated.peak.timezone }))
+		                        ),
+		                    scopePeakRows.length === 0
+		                      ? h(
+		                          "div",
+		                          { className: CSS.breakRow, key: "peakEmpty" },
+		                          h("span", { className: CSS.peakLine }, t("peak.splitNone"))
+		                        )
+		                      : scopePeakRows.map((row) =>
 		                      h(
 		                        "div",
 		                        { className: CSS.breakItem, key: row.key },
@@ -2001,6 +2068,7 @@ window.__ModuleLoader__.load({
 		                        )
 		                      )
 		                    )
+		                  ]
 		                : dailyRows.length === 0
 		                  ? h("div", { className: CSS.breakRow }, h("span", { className: CSS.peakLine }, t("daily.empty")))
 		                  : [
@@ -2167,7 +2235,6 @@ window.__ModuleLoader__.load({
 		                      })
 		                    ]
 		          ),
-		          h("div", { className: CSS.note }, t("panel.note")),
 		          rated.source === "fallback"
 		            ? h("div", { className: CSS.warnNote }, t("rate.unpriced", { model: rated.modelLabel }))
 		            : null,
@@ -2204,7 +2271,15 @@ window.__ModuleLoader__.load({
 		                    step: "0.01",
 		                    defaultValue: String(config.currency.perUsd),
 		                    "aria-label": t("currency.perUsd"),
-		                    onBlur: (event) => updateCurrency({ perUsd: event.target.value }),
+		                    onBlur: (event) => {
+		                      const value = Number(event.target.value);
+		                      if (!Number.isFinite(value) || value <= 0) {
+		                        setPerUsdIssue(true);
+		                        return;
+		                      }
+		                      setPerUsdIssue(false);
+		                      updateCurrency({ perUsd: value });
+		                    },
 		                    onKeyDown: (event) => {
 		                      if (event.key === "Enter") event.target.blur();
 		                    }
@@ -2235,19 +2310,82 @@ window.__ModuleLoader__.load({
 		                  )
 		                ),
 		                fxNote !== null ? h("div", { className: CSS.fxNote }, fxNote) : null,
-		                h("textarea", {
-		                  className: CSS.textarea,
-		                  value: draft,
-		                  spellCheck: false,
-		                  "aria-label": t("rates.hint"),
-		                  onChange: (event) => setDraft(event.target.value)
-		                }),
+		                perUsdIssue ? h("div", { className: CSS.error }, t("currency.perUsdInvalid")) : null,
+		                draftConfig === null || draftConfig.models === undefined
+		                  ? null
+		                  : h(
+		                      "div",
+		                      { className: CSS.rateTable },
+		                      h(
+		                        "div",
+		                        { className: CSS.rateRow + " " + CSS.rateHead },
+		                        h("span", { className: CSS.rateKey }, t("rates.tableHint")),
+		                        RATE_FIELDS.map((field) =>
+		                          h("span", { className: CSS.rateFieldLabel, key: field }, t("rates.field." + field))
+		                        )
+		                      ),
+		                      Object.keys(draftConfig.models).map((key) =>
+		                        h(
+		                          "div",
+		                          { className: CSS.rateRow, key },
+		                          h("span", { className: CSS.rateKey, title: key }, key),
+		                          RATE_FIELDS.map((field) =>
+		                            h("input", {
+		                              key: field,
+		                              className: CSS.rateInput,
+		                              type: "number",
+		                              min: "0",
+		                              step: "0.01",
+		                              value: draftConfig.models[key][field] === undefined ? "" : String(draftConfig.models[key][field]),
+		                              "aria-label": key + " " + t("rates.field." + field),
+		                              onChange: (event) => setDraft(withModelRate(draftConfig, key, field, event.target.value))
+		                            })
+		                          )
+		                        )
+		                      )
+		                    ),
+		                h(
+		                  "button",
+		                  {
+		                    type: "button",
+		                    className: CSS.ghost + " " + CSS.jsonToggle,
+		                    "aria-expanded": showJson,
+		                    onClick: () => setShowJson(!showJson)
+		                  },
+		                  showJson ? t("rates.jsonHide") : t("rates.jsonShow")
+		                ),
+		                showJson
+		                  ? h("textarea", {
+		                      className: CSS.textarea,
+		                      value: draft,
+		                      spellCheck: false,
+		                      "aria-label": t("rates.hint"),
+		                      onChange: (event) => setDraft(event.target.value)
+		                    })
+		                  : null,
 		                h("div", { className: CSS.hint }, t("rates.hint")),
-		                invalid ? h("div", { className: CSS.error }, t("rates.invalid")) : null,
+		                invalid
+		                  ? h("div", { className: CSS.error }, t("rates.invalid") + (draftError === null ? "" : "（" + draftError + "）"))
+		                  : null,
 		                h(
 		                  "div",
 		                  { className: CSS.actions },
-		                  h("button", { type: "button", className: CSS.ghost, onClick: resetEdit }, t("rates.reset")),
+		                  h("button", { type: "button", className: CSS.ghost, onClick: cancelEdit }, t("rates.cancel")),
+		                  h(
+		                    "button",
+		                    {
+		                      type: "button",
+		                      className: CSS.ghost,
+		                      onClick: () => {
+		                        if (!confirmReset) {
+		                          setConfirmReset(true);
+		                          return;
+		                        }
+		                        resetEdit();
+		                      }
+		                    },
+		                    confirmReset ? t("rates.resetConfirm") : t("rates.reset")
+		                  ),
 		                  h("button", { type: "button", className: CSS.primary, onClick: saveEdit }, t("rates.save"))
 		                )
 		              )
@@ -2314,7 +2452,7 @@ window.__ModuleLoader__.load({
 
 		const zh = {
 		  "trigger.aria": "Token 花费约 {amount}",
-		  "panel.title": "Token 花费",
+		  "panel.title": "鲸囊 · Token 花费",
 		  "panel.model": "计价模型",
 		  "panel.defaultModel": "默认费率",
 		  "panel.totalTokens": "合计 tokens",
@@ -2324,7 +2462,17 @@ window.__ModuleLoader__.load({
 		  "bucket.cacheWrite": "缓存写入",
 		  "bucket.output": "输出",
 		  "rates.edit": "调整费率",
-		  "rates.hint": "以 JSON 覆盖默认费率。数值是「每百万 token」，币种由每条费率自己的 currency 决定（默认人民币）。",
+		  "rates.tableHint": "点数字即可改费率",
+		  "rates.field.input": "输入",
+		  "rates.field.cacheRead": "缓存读",
+		  "rates.field.cacheWrite": "缓存写",
+		  "rates.field.output": "输出",
+		  "rates.jsonShow": "高级 JSON",
+		  "rates.jsonHide": "收起 JSON",
+		  "rates.cancel": "取消",
+		  "rates.resetConfirm": "再按一次清空",
+		  "currency.perUsdInvalid": "汇率必须是大于 0 的数字，改动未保存。",
+		  "rates.hint": "费率单位是「每百万 token」，保存后立即生效。",
 		  "rates.save": "保存",
 		  "rates.reset": "恢复默认",
 		  "rates.invalid": "JSON 格式有误，请检查后重试。",
@@ -2357,7 +2505,7 @@ window.__ModuleLoader__.load({
 		  "tab.label": "统计视角",
 		  "scope.summary": "{days} 天 · {sessions} 个会话 · {models} 个模型",
 		  "scope.empty": "还没有累计记录，用几个会话后这里会有数据。",
-		  "scope.coverage": "只统计本插件记录过的会话；安装之前、或从未打开过的会话不在其中。",
+		  "scope.coverage": "不含安装前、或从未打开过的会话",
 		  "spark.tip": "{day} · {amount}",
 		  "tab.project": "项目",
 		  "project.hint": "按项目与会话汇总全部记录",
@@ -2386,7 +2534,7 @@ window.__ModuleLoader__.load({
 
 		const en = {
 		  "trigger.aria": "Token spend roughly {amount}",
-		  "panel.title": "Token spend",
+		  "panel.title": "TokenPurse · Token spend",
 		  "panel.model": "Priced model",
 		  "panel.defaultModel": "Default rates",
 		  "panel.totalTokens": "Total tokens",
@@ -2396,7 +2544,17 @@ window.__ModuleLoader__.load({
 		  "bucket.cacheWrite": "Cache write",
 		  "bucket.output": "Output",
 		  "rates.edit": "Edit rates",
-		  "rates.hint": "Override default rates with JSON. Values are per million tokens in each entry's own currency (CNY by default).",
+		  "rates.tableHint": "Edit rates inline",
+		  "rates.field.input": "in",
+		  "rates.field.cacheRead": "c-read",
+		  "rates.field.cacheWrite": "c-write",
+		  "rates.field.output": "out",
+		  "rates.jsonShow": "Advanced JSON",
+		  "rates.jsonHide": "Hide JSON",
+		  "rates.cancel": "Cancel",
+		  "rates.resetConfirm": "Click again to clear",
+		  "currency.perUsdInvalid": "The exchange rate must be a number greater than 0 — nothing was saved.",
+		  "rates.hint": "Rates are per million tokens and take effect as soon as you save.",
 		  "rates.save": "Save",
 		  "rates.reset": "Reset",
 		  "rates.invalid": "Invalid JSON — please check and retry.",
@@ -2429,7 +2587,7 @@ window.__ModuleLoader__.load({
 		  "tab.label": "View",
 		  "scope.summary": "{days} days · {sessions} sessions · {models} models",
 		  "scope.empty": "No accumulated records yet — this fills in after a few sessions.",
-		  "scope.coverage": "Only sessions this plugin has recorded are counted — sessions never opened, or from before it was installed, are not included.",
+		  "scope.coverage": "Excludes sessions never opened, or from before install",
 		  "spark.tip": "{day} · {amount}",
 		  "tab.project": "Projects",
 		  "project.hint": "Totals per project and session",
