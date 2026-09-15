@@ -216,6 +216,10 @@ const CSS_TEXT =
   ".TPurse_breakSub{margin-left:12px;animation:tp-rise .16s ease-out both}" +
   ".TPurse_breakSub .TPurse_breakLabel,.TPurse_breakSub .TPurse_breakTokens{color:var(--dsw-alias-label-tertiary)}" +
   ".TPurse_breakSub .TPurse_breakAmount{color:var(--dsw-alias-label-secondary)}" +
+  ".TPurse_toneBar{display:flex;gap:1px;height:6px;margin:3px 0 5px;border-radius:3px;overflow:hidden}" +
+  ".TPurse_toneSeg{flex-basis:0;min-width:2px}" +
+  ".TPurse_toneDot{flex:none;align-self:center;width:7px;height:7px;border-radius:2px}" +
+  ".TPurse_toneHead{margin-top:1px}" +
   ".TPurse_share{display:block;height:3px;margin:3px 0 0;border-radius:2px;background:var(--dsw-alias-fill-l2);overflow:hidden}" +
   ".TPurse_shareFill{display:block;height:100%;border-radius:2px;background:var(--dsw-alias-label-tertiary);transform-origin:left center;animation:tp-grow .42s cubic-bezier(.22,1,.36,1) both}" +
   ".TPurse_sparkWrap{position:relative;margin:2px 0 6px}" +
@@ -300,6 +304,10 @@ const CSS = {
   breakTokens: "TPurse_breakTokens",
   breakAmount: "TPurse_breakAmount",
   breakSub: "TPurse_breakSub",
+  toneBar: "TPurse_toneBar",
+  toneSeg: "TPurse_toneSeg",
+  toneDot: "TPurse_toneDot",
+  toneHead: "TPurse_toneHead",
   share: "TPurse_share",
   shareFill: "TPurse_shareFill",
   peakLine: "TPurse_peakLine",
@@ -799,6 +807,21 @@ function formatModelLabel(provider, model) {
   return typeof provider === "string" && provider.length > 0 ? provider + " / " + model : model;
 }
 
+/* 会话配色：全部取自主题真实存在的 static 色阶，浅色/深色主题下都可辨。 */
+const SESSION_TONES = [
+  "--dsw-static-blue-500",
+  "--dsw-static-green-500",
+  "--dsw-static-amber-500",
+  "--dsw-static-red-500",
+  "--dsw-static-deepseek-500",
+  "--dsw-static-neutral-500"
+];
+
+/** 当天第 index 个会话的颜色；同一天内先到先得，超过 6 个才回绕。 */
+function sessionTone(index) {
+  return SESSION_TONES[index % SESSION_TONES.length];
+}
+
 /** 占比进度条宽度：忽略 0，给最小值 2% 以免看不见。 */
 function sharePercent(amount, total) {
   if (!(total > 0) || !(amount > 0)) return 0;
@@ -1163,7 +1186,14 @@ function dailyStats(store, config) {
       return { key: item.key, tokens: item.tokens, amount: item.amount, sessions: items };
     });
     projects.sort((left, right) => right.amount - left.amount);
-    days.push({ day, amount, tokens, models, groups, projects, buckets, bucketAmounts, sessionIds: Array.from(sessionIds) });
+    const sessionRows = [];
+    for (const project of projects) {
+      for (const session of project.sessions) {
+        sessionRows.push({ key: session.key, project: project.key, tokens: session.tokens, amount: session.amount });
+      }
+    }
+    sessionRows.sort((left, right) => right.amount - left.amount);
+    days.push({ day, amount, tokens, models, groups, projects, sessions: sessionRows, buckets, bucketAmounts, sessionIds: Array.from(sessionIds) });
   }
   days.sort((left, right) => (left.day < right.day ? 1 : left.day > right.day ? -1 : 0));
   return days;
@@ -1892,7 +1922,8 @@ function TokenPurseView({ usage, selection, t, sessionId, project, sessionsById 
                             )
                           ),
                       dailyRows.slice(0, DAILY_VIEW_DAYS).map((day) => {
-                        const detail = day.models.length > 1 || day.groups.p.tokens > 0 || day.groups.f.tokens > 0;
+                        const detail =
+                          day.sessions.length > 1 || day.models.length > 1 || day.groups.p.tokens > 0 || day.groups.f.tokens > 0;
                         const expanded = detail && openDay === day.day;
                         const cells = [
                           h("span", { className: CSS.breakDay, key: "day" }, formatDayKey(day.day)),
@@ -1935,6 +1966,55 @@ function TokenPurseView({ usage, selection, t, sessionId, project, sessionsById 
                                       )
                                     )
                                   : null,
+                                day.sessions.length === 0
+                                  ? null
+                                  : [
+                                      h(
+                                        "div",
+                                        { className: CSS.toneBar, key: "tones", "aria-hidden": true },
+                                        day.sessions.map((session, at) =>
+                                          h("span", {
+                                            key: session.key,
+                                            className: CSS.toneSeg,
+                                            style: {
+                                              flexGrow: String(Math.max(session.amount, day.amount * 0.02)),
+                                              background: "var(" + sessionTone(at) + ")"
+                                            }
+                                          })
+                                        )
+                                      ),
+                                      h(
+                                        "div",
+                                        { className: CSS.breakRow + " " + CSS.toneHead, key: "sessionHead" },
+                                        h("span", { className: CSS.peakLine }, t("daily.bySession", { n: day.sessions.length }))
+                                      ),
+                                      day.sessions.map((session, at) =>
+                                        h(
+                                          "div",
+                                          { className: CSS.breakRow, key: session.key },
+                                          h("span", {
+                                            className: CSS.toneDot,
+                                            style: { background: "var(" + sessionTone(at) + ")" },
+                                            "aria-hidden": true
+                                          }),
+                                          h(
+                                            "span",
+                                            {
+                                              className: CSS.breakLabel,
+                                              title: (session.project.length === 0 ? "" : session.project + " · ") + session.key
+                                            },
+                                            sessionLabel(session.key)
+                                          ),
+                                          h("span", { className: CSS.breakTokens }, formatTokens(session.tokens)),
+                                          h("span", { className: CSS.breakAmount }, formatMoney(session.amount, symbol))
+                                        )
+                                      )
+                                    ],
+                                h(
+                                  "div",
+                                  { className: CSS.breakRow + " " + CSS.toneHead, key: "modelHead" },
+                                  h("span", { className: CSS.peakLine }, t("daily.byModel", { n: day.models.length }))
+                                ),
                                 day.models.map((model) =>
                                   h(
                                     "div",
@@ -2128,6 +2208,8 @@ const zh = {
   "peak.modeLow": "当前处于低峰（空闲）时段",
   "breakdown.unknown": "未知模型",
   "breakdown.byModelHint": "本会话各 provider / 模型的用量与花费",
+  "daily.bySession": "{n} 个会话",
+  "daily.byModel": "{n} 个模型",
   "daily.hint": "按观察时刻归入当天（跨全部会话），保留最近 90 天",
   "scope.session": "本会话",
   "scope.all": "累计",
@@ -2195,6 +2277,8 @@ const en = {
   "peak.modeLow": "Currently off-peak (idle) hours",
   "breakdown.unknown": "Unknown model",
   "breakdown.byModelHint": "Tokens and spend per provider / model in this session",
+  "daily.bySession": "{n} sessions",
+  "daily.byModel": "{n} models",
   "daily.hint": "Bucketed by observation time across all sessions, last 90 days kept",
   "scope.session": "Session",
   "scope.all": "All time",

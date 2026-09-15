@@ -111,7 +111,7 @@ function loadInternals(react, now, extra) {
   const sandbox = makeSandbox(react, extra, now);
   const source =
     readFileSync(join(root, "src", "client.js"), "utf8") +
-    "\nexports.__test = { rateUsage, rateLedger, resolveRates, mergeConfig, formatMoney, formatTokens, formatRate, DEFAULT_CONFIG, TokenPurseView, matchCurrencyPreset, findCurrencyPreset, fetchUsdRate, parsePeakWindow, parsePeak, isPeakAt, ratesAt, emptyLedger, syncLedger, migrateConfigV1, rateSource, CURRENCY_PRESETS, localDayKey, sessionModelRows, formatModelLabel, sharePercent, legacyCurrencyConfig, migrateLegacyCurrency, readConfig, dailySeries, sparklinePoints, sparklineLine, sparklineArea, SPARK_DAYS, aggregateDaily, splitByPeak, ledgerSegments, priceSegment, normalizePeakFlag, sessionDayRows, mergeSessionDayRows, dailyStats, normalizeDaily, emptyDaily, formatDayKey };\n";
+    "\nexports.__test = { rateUsage, rateLedger, resolveRates, mergeConfig, formatMoney, formatTokens, formatRate, DEFAULT_CONFIG, TokenPurseView, matchCurrencyPreset, findCurrencyPreset, fetchUsdRate, parsePeakWindow, parsePeak, isPeakAt, ratesAt, emptyLedger, syncLedger, migrateConfigV1, rateSource, CURRENCY_PRESETS, localDayKey, sessionModelRows, formatModelLabel, sharePercent, legacyCurrencyConfig, migrateLegacyCurrency, readConfig, dailySeries, sparklinePoints, sparklineLine, sparklineArea, SPARK_DAYS, aggregateDaily, sessionTone, SESSION_TONES, splitByPeak, ledgerSegments, priceSegment, normalizePeakFlag, sessionDayRows, mergeSessionDayRows, dailyStats, normalizeDaily, emptyDaily, formatDayKey };\n";
   vm.runInContext(source, sandbox);
   return sandbox.exports.__test;
 }
@@ -398,6 +398,42 @@ check(
     projAgg.projects.reduce((sum, item) => sum + item.sessions.length, 0) === 3
 );
 
+/* ── 每日展开：按会话的色块 ─────────────────────────────────────────── */
+
+check(
+  "sessionTone cycles a palette of distinct real theme tokens",
+  internals.SESSION_TONES.length >= 4 &&
+    new Set(internals.SESSION_TONES).size === internals.SESSION_TONES.length &&
+    internals.SESSION_TONES.every((tone) => tone.indexOf("--dsw-static-") === 0) &&
+    internals.sessionTone(0) === internals.SESSION_TONES[0] &&
+    internals.sessionTone(internals.SESSION_TONES.length) === internals.SESSION_TONES[0] &&
+    new Set(internals.SESSION_TONES.map((tone, at) => internals.sessionTone(at))).size === internals.SESSION_TONES.length
+);
+
+const dayStore = {
+  v: 1,
+  days: {
+    "2025-01-06": [
+      { s: "sA", w: "/w/alpha", p: "packyapi", m: "deepseek-flash", k: "o", b: bucketOf(3000000) },
+      { s: "sB", w: "/w/alpha", p: "packyapi", m: "deepseek-v4-pro", k: "p", b: bucketOf(1000000) },
+      { s: "sC", w: "/w/beta", p: "deepseek-official", m: "deepseek-flash", k: "o", b: bucketOf(2000000) }
+    ]
+  }
+};
+const dayStats = internals.dailyStats(dayStore, ledgerConfig);
+check(
+  "a day lists its sessions flat, biggest first, with their project",
+  dayStats[0].sessions.length === 3 &&
+    dayStats[0].sessions.map((item) => item.key).join(",") === "sB,sA,sC" &&
+    dayStats[0].sessions.map((item) => item.project).join(",") === "/w/alpha,/w/alpha,/w/beta" &&
+    dayStats[0].sessions.reduce((sum, item) => sum + item.amount, 0) === dayStats[0].amount
+);
+
+const flatStore = {
+  v: 1,
+  days: { "2025-01-06": [{ s: "sA", w: "/w/alpha", p: "packyapi", m: "deepseek-flash", k: "o", b: bucketOf(1000000) }] }
+};
+
 const peakDayStore = internals.mergeSessionDayRows(
   internals.emptyDaily(),
   "s1",
@@ -678,6 +714,43 @@ check(
   dailySerialized.indexOf('"tabIndex":0') !== -1 && cssSource.indexOf("ArrowLeft") !== -1 && cssSource.indexOf("ArrowRight") !== -1
 );
 check("day detail stays collapsed by default", dailySerialized.indexOf("TPurse_breakSub") === -1 && dailySerialized.indexOf("peak.group.high") === -1);
+
+/* 点开某一天：按会话分成色块。 */
+const countOf = (haystack, needle) => haystack.split(needle).length - 1;
+react.reset();
+react.seed({ 1: true, 2: "daily", 13: "all", 10: dayStore, 3: "2025-01-06" });
+const daySerialized = JSON.stringify(
+  dailyInternals.TokenPurseView({
+    usage,
+    selection,
+    t,
+    sessionId: "sA",
+    project: "/w/alpha",
+    sessionsById: { sA: { displayTitle: "会话甲" }, sB: { displayTitle: "会话乙" }, sC: { displayTitle: "会话丙" } }
+  })
+);
+check(
+  "an expanded day gives each session its own colour block",
+  countOf(daySerialized, "TPurse_toneSeg") === 3 &&
+    countOf(daySerialized, "TPurse_toneDot") === 3 &&
+    daySerialized.indexOf("--dsw-static-blue-500") !== -1 &&
+    daySerialized.indexOf("--dsw-static-green-500") !== -1 &&
+    daySerialized.indexOf("--dsw-static-amber-500") !== -1 &&
+    daySerialized.indexOf("会话乙") !== -1 &&
+    daySerialized.indexOf("会话甲") !== -1 &&
+    daySerialized.indexOf("会话丙") !== -1 &&
+    daySerialized.indexOf("daily.bySession") !== -1 &&
+    daySerialized.indexOf("daily.byModel") !== -1
+);
+react.reset();
+react.seed({ 1: true, 2: "daily", 13: "all", 10: flatStore });
+const flatSerialized = JSON.stringify(
+  dailyInternals.TokenPurseView({ usage, selection, t, sessionId: "sA", project: "/w/alpha", sessionsById: {} })
+);
+check(
+  "a single-session flat day stays collapsed",
+  flatSerialized.indexOf("TPurse_dayRow") === -1 && flatSerialized.indexOf("TPurse_toneBar") === -1
+);
 
 /* 有高峰用量的那天才可展开，展开后给出峰/谷明细。 */
 const PEAK_DAILY_SEED = {
