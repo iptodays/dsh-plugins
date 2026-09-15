@@ -1069,16 +1069,22 @@ window.__ModuleLoader__.load({
 		  return list;
 		}
 
+		/** 会话键：缺 id 时归一到同一个占位键，否则旧行永远匹配不上、无法被替换。 */
+		function sessionKey(value) {
+		  return typeof value === "string" && value.length > 0 ? value : "\u0000unknown";
+		}
+
 		/** 用当前会话的数据替换它自己的旧记录，并丢掉过期天数。 */
 		function mergeSessionDayRows(store, sessionId, rows, now) {
+		  const key = sessionKey(sessionId);
 		  const next = emptyDaily();
 		  for (const day of Object.keys(store.days)) {
-		    const kept = store.days[day].filter((row) => row.s !== sessionId);
+		    const kept = store.days[day].filter((row) => sessionKey(row.s) !== key);
 		    if (kept.length > 0) next.days[day] = kept;
 		  }
 		  for (const row of rows) {
 		    if (next.days[row.d] === undefined) next.days[row.d] = [];
-		    next.days[row.d].push({ s: sessionId, p: row.p, m: row.m, k: row.k, b: row.b });
+		    next.days[row.d].push({ s: key, p: row.p, m: row.m, k: row.k, b: row.b });
 		  }
 		  const cutoff = localDayKey(now - DAILY_KEEP_DAYS * 24 * 60 * 60 * 1000);
 		  for (const day of Object.keys(next.days)) if (day < cutoff) delete next.days[day];
@@ -1369,10 +1375,12 @@ window.__ModuleLoader__.load({
 		    writeLedger(sessionId, ledger);
 		  }, [sessionId, ledger]);
 
-		  /* 每日统计：本会话重复写入同一账本结果是幂等的，不会重复计费。 */
+		  /* 每日统计：本会话重复写入同一账本结果是幂等的，不会重复计费。
+		     每次都从 localStorage 重新读再合并——否则另一个标签页/旧页面里的内存副本
+		     写回时会把它没见过的会话整段抹掉。 */
 		  useEffect(() => {
 		    const rows = sessionDayRows(ledger, config);
-		    setDaily((current) => mergeSessionDayRows(current, sessionId, rows, Date.now()));
+		    setDaily(() => mergeSessionDayRows(readDaily(), sessionId, rows, Date.now()));
 		  }, [sessionId, ledger, config]);
 
 		  useEffect(() => {
@@ -1625,7 +1633,7 @@ window.__ModuleLoader__.load({
 		              h("dd", null, h("span", { className: CSS.tokens }, formatTokens(scopeTokens)))
 		            )
 		          ),
-		          isAll && allTime.days === 0 ? h("div", { className: CSS.note }, t("scope.empty")) : null,
+		          isAll ? h("div", { className: CSS.note }, t(allTime.days === 0 ? "scope.empty" : "scope.coverage")) : null,
 		          rated.peak === null || rated.peak === undefined
 		            ? null
 		            : h(
@@ -1944,7 +1952,8 @@ window.__ModuleLoader__.load({
 
 		  const anchor = h("span", { ref: anchorRef, className: CSS.host, "aria-hidden": "true" });
 		  if (host === null) return anchor;
-		  return h(React.Fragment, null, anchor, createPortal(h(TokenPurseView, { usage, selection, t, sessionId }), host));
+		  /* key 让面板按会话重建：账本等会话内状态就不会被下一个会话沿用。 */
+		  return h(React.Fragment, null, anchor, createPortal(h(TokenPurseView, { key: String(sessionId), usage, selection, t, sessionId }), host));
 		}
 
 		/* ──────────────────────────────── 词条 ──────────────────────────────── */
@@ -1989,6 +1998,7 @@ window.__ModuleLoader__.load({
 		  "scope.label": "统计范围",
 		  "scope.summary": "{days} 天 · {sessions} 个会话 · {models} 个模型",
 		  "scope.empty": "还没有累计记录，用几个会话后这里会有数据。",
+		  "scope.coverage": "只统计本插件记录过的会话；安装之前、或从未打开过的会话不在其中。",
 		  "spark.tip": "{day} · {amount}",
 		  "tab.model": "模型",
 		  "tab.peak": "峰谷",
@@ -2050,6 +2060,7 @@ window.__ModuleLoader__.load({
 		  "scope.label": "Scope",
 		  "scope.summary": "{days} days · {sessions} sessions · {models} models",
 		  "scope.empty": "No accumulated records yet — this fills in after a few sessions.",
+		  "scope.coverage": "Only sessions this plugin has recorded are counted — sessions never opened, or from before it was installed, are not included.",
 		  "spark.tip": "{day} · {amount}",
 		  "tab.model": "Models",
 		  "tab.peak": "Peak",

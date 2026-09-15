@@ -643,6 +643,151 @@ react.reset();
 const hostless = captured.component({ useProjection: () => undefined, t });
 check("host renders hidden anchor without DOM", JSON.stringify(hostless).indexOf("TPurse_host") !== -1);
 
+/* ── 跨会话累积：跑真实 effect 的迷你 React ───────────────────────── */
+
+console.log("cross-session accumulation");
+
+function effectfulReact() {
+  const hooks = [];
+  let index = 0;
+  let pending = [];
+  let dirty = false;
+  const same = (left, right) => {
+    if (left === undefined || right === undefined) return false;
+    if (left === null || right === null || left.length !== right.length) return false;
+    return left.every((value, at) => Object.is(value, right[at]));
+  };
+  return {
+    Fragment: Symbol("Fragment"),
+    createElement(type, props, ...children) {
+      return { type, props: props || {}, children: children.flat() };
+    },
+    useState(init) {
+      const at = index++;
+      if (!(at in hooks)) hooks[at] = typeof init === "function" ? init() : init;
+      return [
+        hooks[at],
+        (next) => {
+          hooks[at] = typeof next === "function" ? next(hooks[at]) : next;
+          dirty = true;
+        }
+      ];
+    },
+    useRef(init) {
+      const at = index++;
+      if (!(at in hooks)) hooks[at] = { current: init };
+      return hooks[at];
+    },
+    useMemo(fn, deps) {
+      const at = index++;
+      const prev = hooks[at];
+      if (prev !== undefined && same(prev.deps, deps)) return prev.value;
+      const value = fn();
+      hooks[at] = { value, deps };
+      return value;
+    },
+    useEffect(fn, deps) {
+      const at = index++;
+      const prev = hooks[at];
+      if (prev !== undefined && same(prev.deps, deps)) {
+        pending.push({ skip: true });
+        return;
+      }
+      pending.push({ at, fn, deps, prev });
+    },
+    begin() {
+      index = 0;
+      pending = [];
+      dirty = false;
+    },
+    flush() {
+      const jobs = pending;
+      pending = [];
+      for (const job of jobs) {
+        if (job.skip) continue;
+        if (job.prev !== undefined && typeof job.prev.cleanup === "function") job.prev.cleanup();
+        hooks[job.at] = { deps: job.deps, cleanup: job.fn() };
+      }
+      return dirty;
+    }
+  };
+}
+
+const crossStorage = (() => {
+  const map = new Map();
+  return {
+    map,
+    getItem: (key) => (map.has(key) ? map.get(key) : null),
+    setItem: (key, value) => map.set(key, String(value)),
+    removeItem: (key) => map.delete(key)
+  };
+})();
+const crossReact = effectfulReact();
+const cross = loadInternals(crossReact, undefined, (sandbox) => {
+  sandbox.setInterval = () => 0;
+  sandbox.clearInterval = () => {};
+  sandbox.setTimeout = () => 0;
+  sandbox.clearTimeout = () => {};
+  sandbox.window.localStorage = crossStorage;
+});
+const DAILY_STORE_KEY = "dsh.token-purse.daily.v1";
+const mkUsage = (tokens) => ({ uncachedInputTokens: tokens, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 });
+const crossSelection = { next: { provider: "packyapi", model: "deepseek-flash" } };
+
+/** 用同一个组件实例渲染若干轮，直到状态稳定（模拟真实 effect 收敛）。 */
+function renderSession(sessionId, tokens) {
+  const usage = mkUsage(tokens);
+  for (let round = 0; round < 8; round += 1) {
+    crossReact.begin();
+    cross.TokenPurseView({ usage, selection: crossSelection, sessionId, t });
+    if (!crossReact.flush()) break;
+  }
+}
+
+function storedDaily() {
+  const raw = crossStorage.map.get(DAILY_STORE_KEY);
+  return raw === undefined ? { v: 1, days: {} } : JSON.parse(raw);
+}
+
+function storedSessionIds() {
+  const ids = new Set();
+  const store = storedDaily();
+  for (const day of Object.keys(store.days)) {
+    for (const row of store.days[day]) ids.add(row.s === undefined ? "<none>" : row.s);
+  }
+  return Array.from(ids).sort();
+}
+
+renderSession("sA", 2000000);
+check("a session lands in the shared daily store", storedSessionIds().join(",") === "sA");
+
+/* 模拟另一个标签页写入了它的会话——本页内存里的副本是旧的。 */
+const otherTab = storedDaily();
+const otherDay = Object.keys(otherTab.days)[0];
+otherTab.days[otherDay].push({
+  s: "sOther",
+  p: "packyapi",
+  m: "deepseek-flash",
+  k: "o",
+  b: { uncachedInputTokens: 500000, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 }
+});
+crossStorage.setItem(DAILY_STORE_KEY, JSON.stringify(otherTab));
+
+renderSession("sA", 3000000);
+check(
+  "merging re-reads the store so another tab's rows survive",
+  storedSessionIds().join(",") === "sA,sOther"
+);
+
+renderSession("sB", 1000000);
+check("a second session accumulates beside the first", storedSessionIds().join(",") === "sA,sB,sOther");
+
+const crossAgg = internals.aggregateDaily(internals.dailyStats(storedDaily(), config));
+check(
+  "the all-time scope spans every stored session",
+  crossAgg.sessions === 3 && crossAgg.tokens === 4500000 && Math.abs(crossAgg.amount - 4.5 * 0.8) < 1e-9
+);
+
 if (failures > 0) {
   console.error("\n" + failures + " check(s) failed");
   process.exit(1);

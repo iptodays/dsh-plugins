@@ -48,6 +48,19 @@ day × session × model × bracket with all four buckets. The accumulated amount
 recomputed from that same data, so the two scopes cannot disagree — within the All time
 scope the parts always add up to the total at the top.
 
+**Which sessions does All time cover?** Only sessions **this plugin has recorded**. The host
+does not expose other sessions' usage (a session-list row's projections are only
+`modelSelection / imageLimits / sessionListMetadata` — there is no `tokenUsage`), so the
+plugin cannot see history it never observed: sessions from before installation, or ones it
+never opened, are not included. That is a limit, not a defect. On the other hand, **opening a
+session once** is enough — its ledger is recorded into the daily store immediately (usage it
+had already accumulated lands on the day it was first observed). The model line in All time
+reports the days, sessions and models actually covered.
+
+When several pages are open (multiple tabs, or a stale tab you forgot to close), the merge
+**re-reads localStorage** before writing back, so an old page cannot wipe records for sessions
+it never saw.
+
 The **Daily** tab has always spanned sessions, so the scope does not affect it.
 
 Currency and FX are settings, so they live inside **Edit rates**; a day's per-model
@@ -363,6 +376,14 @@ otherwise refresh the page.
 
 ## Changelog
 
+- **0.1.13**: fixed **All time being wiped by a stale page**. The merge now **re-reads
+  localStorage** before writing back; previously it overwrote the store with its in-memory copy,
+  so a second tab (or a forgotten old page) could write back a snapshot that predated other
+  sessions and erase them — which looks exactly like "All time only has the current session".
+  Rows with a missing session id are also normalised to one placeholder key (they used to never
+  match, so they were re-added forever instead of replaced), and the panel is keyed by session
+  (`key={sessionId}`) so ledger state cannot carry over. A regression test using a mini React
+  that **actually runs effects** now locks the behaviour down.
 - **0.1.12**: the sparkline is **readable** — hovering shows the day's date and amount with a
   guide line and marker; focusing it and using ← / → steps through days. The callout pulls in
   near the edges and fades in.
