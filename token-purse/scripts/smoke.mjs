@@ -443,6 +443,14 @@ check(
 /* ── 3. 组件渲染 ────────────────────────────────────────────────────── */
 
 console.log("component render");
+const cssSource = readFileSync(join(root, "src", "client.js"), "utf8");
+check(
+  "css ships entrance / reveal keyframes",
+  ["@keyframes tp-panel-in", "@keyframes tp-panel-out", "@keyframes tp-rise", "@keyframes tp-draw", "@keyframes tp-grow", "@keyframes tp-fade"].every(
+    (name) => cssSource.indexOf(name) !== -1
+  )
+);
+check("animations respect reduced motion", cssSource.indexOf("prefers-reduced-motion:reduce") !== -1);
 const t = (key, params) => key + (params ? "|" + JSON.stringify(params) : "");
 react.reset();
 const empty = internals.TokenPurseView({ usage: undefined, selection: undefined, t });
@@ -474,6 +482,17 @@ react.seed({ 1: true, 2: "model" });
 const modelSerialized = JSON.stringify(modelInternals.TokenPurseView({ usage, selection, t }));
 check("panel renders by-model breakdown", modelSerialized.indexOf("packyapi / deepseek-v4-pro") !== -1 && modelSerialized.indexOf("TPurse_breakLabel") !== -1);
 check("by-model rows carry a share bar", modelSerialized.indexOf("TPurse_shareFill") !== -1 && modelSerialized.indexOf("TPurse_breakAmount") !== -1);
+check("panel and tab body carry animation classes", modelSerialized.indexOf("TPurse_panel") !== -1 && modelSerialized.indexOf("TPurse_tabBody") !== -1);
+
+/* 关闭时保留 panelOut 一帧，播完退场动画再卸载。 */
+react.reset();
+react.seed({ 1: false, 12: true });
+const closingSerialized = JSON.stringify(modelInternals.TokenPurseView({ usage, selection, t }));
+check("panel stays mounted while closing", closingSerialized.indexOf("TPurse_panelOut") !== -1 && closingSerialized.indexOf("panel.title") !== -1);
+react.reset();
+react.seed({ 1: false, 12: false });
+const noPanelSerialized = JSON.stringify(modelInternals.TokenPurseView({ usage, selection, t }));
+check("closed panel renders nothing", noPanelSerialized.indexOf("TPurse_panel") === -1 && noPanelSerialized.indexOf("panel.title") === -1);
 check("panel renders three tabs", (modelSerialized.match(/"role":"tab"/g) || []).length === 3 && modelSerialized.indexOf("TPurse_tabOn") !== -1);
 check(
   "settings stay behind the editor",
@@ -521,6 +540,7 @@ check("panel renders daily rows", dailySerialized.indexOf("01-06") !== -1 && dai
 check("daily rows show amount + tokens", dailySerialized.indexOf("¥1.00") !== -1 && dailySerialized.indexOf("¥2.00") !== -1 && dailySerialized.indexOf("2M") !== -1);
 check("panel renders the 30-day sparkline", dailySerialized.indexOf("spark.summary") !== -1 && dailySerialized.indexOf("TPurse_sparkLine") !== -1 && dailySerialized.indexOf("spark.aria") !== -1);
 check("sparkline path is drawn", /"d":"M[0-9.]+ [0-9.]+ L/.test(dailySerialized) && dailySerialized.indexOf("TPurse_sparkArea") !== -1);
+check("sparkline carries a normalized path length", dailySerialized.indexOf('"pathLength":"1"') !== -1 && dailySerialized.indexOf("non-scaling-stroke") !== -1);
 check("day detail stays collapsed by default", dailySerialized.indexOf("TPurse_breakSub") === -1 && dailySerialized.indexOf("peak.group.high") === -1);
 
 /* 有高峰用量的那天才可展开，展开后给出峰/谷明细。 */

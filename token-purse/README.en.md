@@ -37,6 +37,24 @@ rendered at a time**. From top to bottom:
 Currency and FX are settings, so they live inside **Edit rates**; a day's per-model
 detail needs a click on that day. A typical panel is about 240–290px tall.
 
+### Motion
+
+The panel does not just pop in. Every transition is short and never blocks input:
+
+- **Panel**: fades in with a small lift on open (180ms); on close it plays a 130ms
+  exit before unmounting, and clicking the badge mid-exit **cancels the close**.
+- **Tab content**: switching Models / Peak / Daily remounts and fades the body in (180ms).
+- **Share bars**: grow from 0 to their width (420ms, ease-out).
+- **Sparkline**: normalised with `pathLength="1"` and drawn via `stroke-dashoffset`
+  (900ms), then the area fades in. Width changes never distort the stroke
+  (`non-scaling-stroke`).
+- **Expanding a day**: its detail fades in (160ms).
+- **Badge / chevron / buttons**: background and colour transitions (120–160ms); the
+  chevron rotates 180°.
+
+All of it is plain CSS keyframes and transitions — **no animation library** — and it
+honours `prefers-reduced-motion: reduce`, which switches every animation off.
+
 ## How it works
 
 1. The host @deepseek-ai/dsh-token-meter plugin maintains a **tokenUsage** session
@@ -64,24 +82,43 @@ existing pills. No stats row (empty session) means no badge.
 Assumes a running **dsh web** (or desktop) with its profile at
 **$DSH_HOME/profiles/web**.
 
-1. Add the package to the profile:
+### Option 1 — install straight from GitHub (recommended)
 
-        dsh plugin --profile web add file:/Users/a/Desktop/dev/iptodays/dsh-plugins/token-purse
+    dsh plugin --profile web add "github:iptodays/dsh-plugins#path:token-purse"
 
-   Or manually:
+- `github:` makes pnpm fetch the repository; `#path:token-purse` selects the
+  subdirectory inside the monorepo — the repository root is not a package, so
+  `path:` is required.
+- **Keep the quotes**: `#` starts a shell comment, so an unquoted spec is truncated.
+- To **pin a version**, put the committish after `#` and join `path:` with `&`:
 
-        cd "$DSH_HOME/profiles/web"
-        pnpm add file:/Users/a/Desktop/dev/iptodays/dsh-plugins/token-purse
+      dsh plugin --profile web add "github:iptodays/dsh-plugins#<full-sha>&path:token-purse"
 
-2. Insert this into the top-level array of
-   **$DSH_HOME/profiles/web/cordis.patch.yml**:
+  A branch or tag name works too. It must be a **full 40-character SHA** — a short
+  SHA is treated as a ref name and fails to resolve.
+- To upgrade, re-run the same command; pnpm caches git dependencies, so use
+  `dsh plugin --profile web update` to force re-resolution if needed.
 
-        - insert:
-            - id: ui-token-purse
-              name: '@dsh-plugins/token-purse'
+### Option 2 — install from a local checkout (when developing this plugin)
 
-3. Save. patchReload is live, so it picks the change up; refresh the page and send
-   a message — the **≈$...** badge appears in the stats row under the composer.
+    dsh plugin --profile web add file:/path/to/dsh-plugins/token-purse
+
+Both forms just forward to pnpm inside the profile directory, so this is equivalent:
+
+    cd "$DSH_HOME/profiles/web"
+    pnpm add "github:iptodays/dsh-plugins#path:token-purse"
+
+### Mount it
+
+Insert this into the top-level array of
+**$DSH_HOME/profiles/web/cordis.patch.yml**:
+
+    - insert:
+        - id: ui-token-purse
+          name: "@dsh-plugins/token-purse"
+
+Save. patchReload is live, so it picks the change up; refresh the page and send
+a message — the **≈¥...** badge appears in the stats row under the composer.
 
 A ready-made snippet ships as **cordis.patch.yml**.
 
@@ -307,6 +344,11 @@ otherwise refresh the page.
 
 ## Changelog
 
+- **0.1.10**: **Motion.** Panel fade-in/exit (cancellable mid-exit), tab-body fade,
+  growing share bars, a drawn sparkline, a fading day detail, button and chevron
+  transitions — all plain CSS and `prefers-reduced-motion` aware. Docs gained the
+  **install straight from GitHub** route (`github:iptodays/dsh-plugins#path:token-purse`)
+  and how to pin a SHA.
 - **0.1.9**: **Slimmed the panel.** The three breakdowns (Models / Peak / Daily) became
   segmented tabs with only one rendered at a time; a day's per-model detail now expands
   on click; currency and FX moved inside **Edit rates**. Nodes went 197 → 49–81 and the

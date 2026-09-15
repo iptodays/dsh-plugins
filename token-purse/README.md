@@ -35,6 +35,22 @@ TokenPurse 是一个 DSH Web 客户端插件。它在输入框下方的会话统
 币种与汇率属于设置，收在 **调整费率** 里面；「每日」的按模型明细要**点某一天**才展开。
 典型状态下面板约 240–290px 高。
 
+### 动效
+
+面板不是瞬间出现的，各处的过渡都做了但都很短，不挡操作：
+
+- **面板**：打开时淡入 + 轻微上移缩放（180ms）；关闭时播完 130ms 的退场动画再卸载，
+  退场途中再点一次徽标会**取消关闭**。
+- **页签内容**：切换 模型 / 峰谷 / 每日 时重新挂载并淡入上移（180ms）。
+- **占比条**：从左侧 0 展开到目标宽度（420ms，缓出）。
+- **折线**：用 `pathLength="1"` 归一化后做 `stroke-dashoffset` 描线（900ms），
+  面积随后淡入；宽度变化不会让线条粗细失真（`non-scaling-stroke`）。
+- **展开每日明细**：子行淡入（160ms）。
+- **徽标 / 箭头 / 按钮**：背景色与颜色过渡（120–160ms），箭头旋转 180°。
+
+全部用 CSS 关键帧与过渡实现，**不引入任何动画库**；并且遵守
+`prefers-reduced-motion: reduce`——系统开了「减弱动态效果」时所有动画自动关闭。
+
 ## 工作原理
 
 1. 宿主的 token-meter 插件维护一个 **tokenUsage** 会话投影，累计整个会话日志里
@@ -58,23 +74,41 @@ TokenPurse 是一个 DSH Web 客户端插件。它在输入框下方的会话统
 前提：已经用 **dsh web**（或桌面端）启动，profile 目录在
 **$DSH_HOME/profiles/web**。
 
-第一步，把本包装进 profile：
+### 方式一：直接从 GitHub 安装（推荐）
 
-    dsh plugin --profile web add file:/Users/a/Desktop/dev/iptodays/dsh-plugins/token-purse
+    dsh plugin --profile web add "github:iptodays/dsh-plugins#path:token-purse"
 
-这条命令只是把参数转发给 profile 目录里的 pnpm。也可以手动执行：
+- `github:` 让 pnpm 直接拉仓库；`#path:token-purse` 指定 monorepo 里的子目录
+  ——仓库根目录不是包，所以 `path:` 不能省。
+- **引号不能省**：`#` 在 shell 里是注释起始符，不引会被截断。
+- 要**锁定版本**，把 committish 放到 `#` 后面，用 `&` 连 `path:`：
+
+      dsh plugin --profile web add "github:iptodays/dsh-plugins#<完整 SHA>&path:token-purse"
+
+  也可以写分支名或标签名。**必须是完整的 40 位 SHA**——短 SHA 会被当成 ref 名而
+  解析失败。
+- 升级就重跑同一条命令；pnpm 会缓存 git 依赖，必要时用
+  `dsh plugin --profile web update` 强制重新解析。
+
+### 方式二：从本地目录安装（开发本插件时用）
+
+    dsh plugin --profile web add file:/path/to/dsh-plugins/token-purse
+
+两种方式都只是把参数转发给 profile 目录里的 pnpm，所以等价地也可以手动执行：
 
     cd "$DSH_HOME/profiles/web"
-    pnpm add file:/Users/a/Desktop/dev/iptodays/dsh-plugins/token-purse
+    pnpm add "github:iptodays/dsh-plugins#path:token-purse"
 
-第二步，把下面这段插进 **$DSH_HOME/profiles/web/cordis.patch.yml** 的顶层数组：
+### 挂载
+
+把下面这段插进 **$DSH_HOME/profiles/web/cordis.patch.yml** 的顶层数组：
 
     - insert:
         - id: ui-token-purse
           name: '@dsh-plugins/token-purse'
 
-第三步，保存即可。web profile 的 patchReload 是 live，改完 patch 会自动重载；
-浏览器刷新一次页面，随便发一条消息，底部统计行出现 **≈$...** 就装好了。
+保存即可。web profile 的 patchReload 是 live，改完 patch 会自动重载；浏览器刷新一次
+页面，随便发一条消息，底部统计行出现 **≈¥...** 就装好了。
 
 仓库里也附带了一份现成片段：**cordis.patch.yml**。
 
@@ -271,6 +305,10 @@ DeepSeek 官方（以及走官方渠道的 packyapi）都是：工作日 **09:00
 
 ## 更新记录
 
+- **0.1.10**：**动效**。面板淡入/退场（退场途中可取消）、页签内容淡入、占比条展开、
+  折线描线、每日明细淡入、按钮与箭头过渡；全部纯 CSS，遵守 `prefers-reduced-motion`。
+  文档补充**直接从 GitHub 安装**（`github:iptodays/dsh-plugins#path:token-purse`）
+  与锁定 SHA 的方式。
 - **0.1.9**：**面板精简**。三个分解（模型 / 峰谷 / 每日）合并成**分段切换**，一次只渲染
   一个；每日的按模型明细改为**点击那天展开**；币种 / 汇率收进 **调整费率**。节点数
   197 → 49–81，高度约 1000px → 240–290px。

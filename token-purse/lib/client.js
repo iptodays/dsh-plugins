@@ -159,13 +159,13 @@ window.__ModuleLoader__.load({
 
 		const CSS_TEXT =
 		  ".TPurse_root{position:relative;display:inline-flex;align-items:center}" +
-		  ".TPurse_trigger{display:inline-flex;align-items:center;gap:3px;height:28px;padding:0 8px;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;cursor:pointer;font-variant-numeric:tabular-nums}" +
+		  ".TPurse_trigger{display:inline-flex;align-items:center;gap:3px;height:28px;padding:0 8px;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;cursor:pointer;font-variant-numeric:tabular-nums;transition:background-color .14s ease,color .14s ease}" +
 		  ".TPurse_trigger:hover,.TPurse_trigger:focus-visible{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}" +
 		  ".TPurse_approx{opacity:.75}" +
 		  ".TPurse_amount{font-weight:500;color:var(--dsw-alias-label-secondary)}" +
-		  ".TPurse_chevron{font-size:9px;opacity:.6;transition:transform .12s}" +
+		  ".TPurse_chevron{font-size:9px;opacity:.6;transition:transform .16s cubic-bezier(.22,1,.36,1)}" +
 		  ".TPurse_chevronOpen{transform:rotate(180deg)}" +
-		  ".TPurse_panel{position:absolute;bottom:calc(100% + 8px);top:auto;right:0;z-index:100;box-sizing:border-box;width:min(320px,calc(100vw - 32px));padding:12px;border:0;border-radius:12px;background:var(--dsw-specific-menu);box-shadow:var(--dsw-elevation-prominent);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:20px;cursor:default}" +
+		  ".TPurse_panel{position:absolute;bottom:calc(100% + 8px);top:auto;right:0;z-index:100;box-sizing:border-box;width:min(320px,calc(100vw - 32px));padding:12px;border:0;border-radius:12px;background:var(--dsw-specific-menu);box-shadow:var(--dsw-elevation-prominent);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:20px;cursor:default;transform-origin:bottom right;animation:tp-panel-in .18s cubic-bezier(.22,1,.36,1) both}" +
 		  ".TPurse_head{display:flex;align-items:baseline;gap:8px}" +
 		  ".TPurse_title{color:var(--dsw-alias-label-tertiary)}" +
 		  ".TPurse_total{margin-left:auto;color:var(--dsw-alias-label-primary);font-weight:600;font-variant-numeric:tabular-nums}" +
@@ -179,14 +179,14 @@ window.__ModuleLoader__.load({
 		  ".TPurse_tokens{min-width:52px;text-align:right;color:var(--dsw-alias-label-tertiary)}" +
 		  ".TPurse_sub{min-width:68px;text-align:right;color:var(--dsw-alias-label-primary)}" +
 		  ".TPurse_note{margin-top:10px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px}" +
-		  ".TPurse_editButton{margin-top:8px;padding:0;border:0;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:11px;cursor:pointer}" +
+		  ".TPurse_editButton{margin-top:8px;padding:0;border:0;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:11px;cursor:pointer;transition:color .14s ease}" +
 		  ".TPurse_editButton:hover{color:var(--dsw-alias-label-secondary)}" +
 		  ".TPurse_editor{margin-top:8px}" +
 		  ".TPurse_textarea{box-sizing:border-box;width:100%;height:148px;padding:6px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-fill-l2,transparent);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-mono);font-size:11px;line-height:16px;resize:vertical}" +
 		  ".TPurse_hint{margin-top:4px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px}" +
 		  ".TPurse_error{margin-top:4px;color:var(--dsw-static-red-500,var(--dsw-alias-label-primary));font-size:11px}" +
 		  ".TPurse_actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}" +
-		  ".TPurse_ghost,.TPurse_primary{padding:4px 10px;border:0;border-radius:8px;font-size:11px;cursor:pointer}" +
+		  ".TPurse_ghost,.TPurse_primary{padding:4px 10px;border:0;border-radius:8px;font-size:11px;cursor:pointer;transition:background-color .14s ease,opacity .14s ease}" +
 		  ".TPurse_ghost{background:transparent;color:var(--dsw-alias-label-secondary)}" +
 		  ".TPurse_ghost:hover{background:var(--dsw-alias-interactive-bg-hover)}" +
 		  ".TPurse_primary{background:var(--dsw-alias-label-primary);color:var(--dsw-specific-menu)}" +
@@ -200,7 +200,7 @@ window.__ModuleLoader__.load({
 		  ".TPurse_select{width:100%;max-width:160px;min-width:0}" +
 		  ".TPurse_rateInput{width:76px;text-align:right;font-family:var(--dsw-font-mono);font-variant-numeric:tabular-nums}" +
 		  ".TPurse_fxRow{display:flex;align-items:center;gap:10px;margin-top:8px;color:var(--dsw-alias-label-tertiary);font-size:11px}" +
-		  ".TPurse_fxButton{padding:2px 8px;border:1px solid var(--dsw-alias-border-l1);border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;cursor:pointer}" +
+		  ".TPurse_fxButton{padding:2px 8px;border:1px solid var(--dsw-alias-border-l1);border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;cursor:pointer;transition:background-color .14s ease}" +
 		  ".TPurse_fxButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}" +
 		  ".TPurse_fxButton:disabled{opacity:.5;cursor:default}" +
 		  ".TPurse_fxAuto{display:inline-flex;align-items:center;gap:4px;cursor:pointer}" +
@@ -220,26 +220,35 @@ window.__ModuleLoader__.load({
 		  ".TPurse_breakDay{flex:1 1 auto;min-width:0;color:var(--dsw-alias-label-secondary)}" +
 		  ".TPurse_breakTokens{flex:none;color:var(--dsw-alias-label-tertiary)}" +
 		  ".TPurse_breakAmount{flex:none;min-width:58px;text-align:right;color:var(--dsw-alias-label-primary)}" +
-		  ".TPurse_breakSub{margin-left:12px}" +
+		  ".TPurse_breakSub{margin-left:12px;animation:tp-rise .16s ease-out both}" +
 		  ".TPurse_breakSub .TPurse_breakLabel,.TPurse_breakSub .TPurse_breakTokens{color:var(--dsw-alias-label-tertiary)}" +
 		  ".TPurse_breakSub .TPurse_breakAmount{color:var(--dsw-alias-label-secondary)}" +
 		  ".TPurse_share{display:block;height:3px;margin:3px 0 0;border-radius:2px;background:var(--dsw-alias-fill-l2);overflow:hidden}" +
-		  ".TPurse_shareFill{display:block;height:100%;border-radius:2px;background:var(--dsw-alias-label-tertiary)}" +
+		  ".TPurse_shareFill{display:block;height:100%;border-radius:2px;background:var(--dsw-alias-label-tertiary);transform-origin:left center;animation:tp-grow .42s cubic-bezier(.22,1,.36,1) both}" +
 		  ".TPurse_sparkWrap{margin:2px 0 6px}" +
 		  ".TPurse_spark{display:block;width:100%;height:28px;overflow:visible}" +
-		  ".TPurse_sparkLine{fill:none;stroke:var(--dsw-alias-label-secondary);stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round}" +
-		  ".TPurse_sparkArea{fill:var(--dsw-alias-fill-l2);stroke:none}" +
+		  ".TPurse_sparkLine{fill:none;stroke:var(--dsw-alias-label-secondary);stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;animation:tp-draw .9s ease-out .08s forwards}" +
+		  ".TPurse_sparkArea{fill:var(--dsw-alias-fill-l2);stroke:none;animation:tp-fade .5s ease-out .3s both}" +
 		  ".TPurse_sparkNote{display:block;margin-top:2px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:15px;font-variant-numeric:tabular-nums}" +
 		  ".TPurse_tabs{display:flex;gap:2px;margin-top:10px;padding:2px;border-radius:8px;background:var(--dsw-alias-fill-l2)}" +
-		  ".TPurse_tab{flex:1 1 0;min-width:0;padding:3px 6px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;font-family:inherit;cursor:pointer}" +
+		  ".TPurse_tab{flex:1 1 0;min-width:0;padding:3px 6px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;font-family:inherit;cursor:pointer;transition:background-color .14s ease,color .14s ease}" +
 		  ".TPurse_tabOn{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);font-weight:500}" +
 		  ".TPurse_sectionFlat{margin-top:8px;padding-top:0;border-top:0}" +
-		  ".TPurse_dayRow{width:100%;padding:0;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer}" +
+		  ".TPurse_dayRow{width:100%;padding:0;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer;transition:color .12s ease}" +
 		  ".TPurse_peakLine{flex:1 1 auto;min-width:0;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}" +
 		  ".TPurse_warnNote{margin-top:6px;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px;word-break:break-word}" +
 		  ".TPurse_sourceChip{flex:none;padding:0 6px;border-radius:999px;background:var(--dsw-alias-fill-l2,transparent);color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:15px}" +
 		  ".TPurse_sourceChipExact{color:var(--dsw-alias-label-secondary)}" +
-		  ".TPurse_sourceChipMiss{color:var(--dsw-alias-label-primary)}";
+		  ".TPurse_sourceChipMiss{color:var(--dsw-alias-label-primary)}" +
+		  ".TPurse_tabBody{animation:tp-rise .18s ease-out both}" +
+		  ".TPurse_panelOut{animation:tp-panel-out .13s ease-in both}" +
+		  "@keyframes tp-panel-in{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:none}}" +
+		  "@keyframes tp-panel-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(4px) scale(.99)}}" +
+		  "@keyframes tp-rise{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}" +
+		  "@keyframes tp-grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}" +
+		  "@keyframes tp-fade{from{opacity:0}to{opacity:1}}" +
+		  "@keyframes tp-draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}" +
+		  "@media (prefers-reduced-motion:reduce){.TPurse_panel,.TPurse_panelOut,.TPurse_tabBody,.TPurse_breakSub,.TPurse_sparkLine,.TPurse_sparkArea,.TPurse_shareFill{animation:none!important}}";
 
 		const CSS = {
 		  root: "TPurse_root",
@@ -301,6 +310,8 @@ window.__ModuleLoader__.load({
 		  tabOn: "TPurse_tabOn",
 		  sectionFlat: "TPurse_sectionFlat",
 		  dayRow: "TPurse_dayRow",
+		  tabBody: "TPurse_tabBody",
+		  panelOut: "TPurse_panelOut",
 		  sparkWrap: "TPurse_sparkWrap",
 		  spark: "TPurse_spark",
 		  sparkLine: "TPurse_sparkLine",
@@ -1122,6 +1133,7 @@ window.__ModuleLoader__.load({
 		const SPARK_VIEW_W = 100;
 		const SPARK_VIEW_H = 30;
 		const SPARK_PAD = 2;
+		const PANEL_EXIT_MS = 130;
 
 		/* 三种分解方式，同一时间只展开一个。 */
 		const TABS = [
@@ -1228,20 +1240,37 @@ window.__ModuleLoader__.load({
 		  const [ledger, setLedger] = useState(() => readLedger(sessionId));
 		  const [daily, setDaily] = useState(readDaily);
 		  const [tick, setTick] = useState(0);
+		  const [closing, setClosing] = useState(false);
 		  const rootRef = useRef(null);
+		  const closeTimer = useRef(null);
+
+		  /* 关闭时先播完退场动画，再卸载面板。 */
+		  const closePanel = () => {
+		    if (closeTimer.current !== null) return;
+		    setClosing(true);
+		    closeTimer.current = setTimeout(() => {
+		      closeTimer.current = null;
+		      setClosing(false);
+		      setOpen(false);
+		      setEditing(false);
+		    }, PANEL_EXIT_MS);
+		  };
+
+		  useEffect(
+		    () => () => {
+		      if (closeTimer.current !== null) clearTimeout(closeTimer.current);
+		    },
+		    []
+		  );
 
 		  useEffect(() => {
 		    if (!open) return undefined;
 		    const onPointerDown = (event) => {
 		      if (rootRef.current !== null && event.target instanceof Node && rootRef.current.contains(event.target)) return;
-		      setOpen(false);
-		      setEditing(false);
+		      closePanel();
 		    };
 		    const onKeyDown = (event) => {
-		      if (event.key === "Escape") {
-		        setOpen(false);
-		        setEditing(false);
-		      }
+		      if (event.key === "Escape") closePanel();
 		    };
 		    document.addEventListener("pointerdown", onPointerDown);
 		    document.addEventListener("keydown", onKeyDown);
@@ -1393,6 +1422,13 @@ window.__ModuleLoader__.load({
 		        "aria-haspopup": "dialog",
 		        "aria-expanded": open,
 		        onClick: () => {
+		          /* 退场途中再点一次视为「取消关闭」。 */
+		          if (closeTimer.current !== null) {
+		            clearTimeout(closeTimer.current);
+		            closeTimer.current = null;
+		            setClosing(false);
+		            return;
+		          }
 		          const next = !open;
 		          setOpen(next);
 		          if (next) maybeAutoFetch();
@@ -1416,10 +1452,10 @@ window.__ModuleLoader__.load({
 		          ),
 		      h("span", { className: open ? CSS.chevron + " " + CSS.chevronOpen : CSS.chevron, "aria-hidden": true }, "▾")
 		    ),
-		    open
+		    open || closing
 		      ? h(
 		          "div",
-		          { className: CSS.panel, role: "dialog", "aria-label": t("panel.title") },
+		          { className: closing ? CSS.panel + " " + CSS.panelOut : CSS.panel, role: "dialog", "aria-label": t("panel.title") },
 		          h(
 		            "div",
 		            { className: CSS.head },
@@ -1498,7 +1534,7 @@ window.__ModuleLoader__.load({
 		          ),
 		          h(
 		            "div",
-		            { className: CSS.section + " " + CSS.sectionFlat, title: t(activeTab.hint) },
+		            { className: CSS.section + " " + CSS.sectionFlat + " " + CSS.tabBody, key: tab, title: t(activeTab.hint) },
 		            tab === "model"
 		              ? modelRows.length < 2
 		                ? h("div", { className: CSS.breakRow }, h("span", { className: CSS.peakLine }, t("breakdown.singleModel")))
@@ -1559,7 +1595,12 @@ window.__ModuleLoader__.load({
 		                                "aria-label": t("spark.aria", { days: SPARK_DAYS, max: formatMoney(spark.max, symbol) })
 		                              },
 		                              h("path", { className: CSS.sparkArea, d: sparklineArea(spark.points, SPARK_VIEW_H, SPARK_PAD) }),
-		                              h("path", { className: CSS.sparkLine, d: sparklineLine(spark.points), vectorEffect: "non-scaling-stroke" })
+		                              h("path", {
+		                                className: CSS.sparkLine,
+		                                d: sparklineLine(spark.points),
+		                                pathLength: "1",
+		                                vectorEffect: "non-scaling-stroke"
+		                              })
 		                            ),
 		                            h(
 		                              "span",
