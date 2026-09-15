@@ -111,7 +111,7 @@ function loadInternals(react, now, extra) {
   const sandbox = makeSandbox(react, extra, now);
   const source =
     readFileSync(join(root, "src", "client.js"), "utf8") +
-    "\nexports.__test = { rateUsage, rateLedger, resolveRates, mergeConfig, formatMoney, formatTokens, formatRate, DEFAULT_CONFIG, TokenPurseView, matchCurrencyPreset, findCurrencyPreset, fetchUsdRate, parsePeakWindow, parsePeak, isPeakAt, ratesAt, emptyLedger, syncLedger, migrateConfigV1, rateSource, CURRENCY_PRESETS, localDayKey, sessionModelRows, formatModelLabel, sharePercent, legacyCurrencyConfig, migrateLegacyCurrency, readConfig, sessionDayRows, mergeSessionDayRows, dailyStats, normalizeDaily, emptyDaily, formatDayKey };\n";
+    "\nexports.__test = { rateUsage, rateLedger, resolveRates, mergeConfig, formatMoney, formatTokens, formatRate, DEFAULT_CONFIG, TokenPurseView, matchCurrencyPreset, findCurrencyPreset, fetchUsdRate, parsePeakWindow, parsePeak, isPeakAt, ratesAt, emptyLedger, syncLedger, migrateConfigV1, rateSource, CURRENCY_PRESETS, localDayKey, sessionModelRows, formatModelLabel, sharePercent, legacyCurrencyConfig, migrateLegacyCurrency, readConfig, dailySeries, sparklinePoints, sparklineLine, sparklineArea, SPARK_DAYS, sessionDayRows, mergeSessionDayRows, dailyStats, normalizeDaily, emptyDaily, formatDayKey };\n";
   vm.runInContext(source, sandbox);
   return sandbox.exports.__test;
 }
@@ -326,6 +326,25 @@ const multiDayStore = internals.mergeSessionDayRows(
   ],
   day2
 );
+const sparkSeries = internals.dailySeries(dayStatRows, internals.SPARK_DAYS, day2);
+check("dailySeries pads to 30 days", sparkSeries.length === 30 && sparkSeries[0].day === "2024-12-09" && sparkSeries[29].day === "2025-01-07");
+check(
+  "dailySeries zero-fills gaps",
+  Math.abs(sparkSeries[29].amount - 4) < 1e-9 && Math.abs(sparkSeries[28].amount - 2) < 1e-9 && sparkSeries[27].amount === 0 && sparkSeries[0].amount === 0
+);
+const sparkGeom = internals.sparklinePoints(sparkSeries, 100, 30, 2);
+check("sparkline spans the viewbox", sparkGeom.points.length === 30 && sparkGeom.points[0].x === 2 && sparkGeom.points[29].x === 98);
+check(
+  "sparkline y maps max to top, zero to bottom",
+  Math.abs(sparkGeom.max - 4) < 1e-9 && Math.abs(sparkGeom.points[29].y - 2) < 1e-9 && Math.abs(sparkGeom.points[27].y - 28) < 1e-9
+);
+check(
+  "sparkline paths are well formed",
+  internals.sparklineLine(sparkGeom.points).indexOf("M2 28") === 0 && internals.sparklineArea(sparkGeom.points, 30, 2).slice(-1) === "Z"
+);
+const flatSpark = internals.sparklinePoints(internals.dailySeries([], 5, day2), 100, 30, 2);
+check("sparkline handles an empty range", flatSpark.max === 0 && flatSpark.points.every((point) => point.y === 28));
+
 const multiDayStats = internals.dailyStats(multiDayStore, config);
 check(
   "dailyStats splits one day by model",
@@ -440,6 +459,8 @@ react.seed({ 1: true });
 const dailySerialized = JSON.stringify(dailyInternals.TokenPurseView({ usage, selection, t }));
 check("panel renders daily rows", dailySerialized.indexOf("daily.title") !== -1 && dailySerialized.indexOf("01-06") !== -1 && dailySerialized.indexOf("01-05") !== -1);
 check("daily rows show amount + tokens", dailySerialized.indexOf("¥1.00") !== -1 && dailySerialized.indexOf("¥2.00") !== -1 && dailySerialized.indexOf("2M") !== -1);
+check("panel renders the 30-day sparkline", dailySerialized.indexOf("spark.summary") !== -1 && dailySerialized.indexOf("TPurse_sparkLine") !== -1 && dailySerialized.indexOf("spark.aria") !== -1);
+check("sparkline path is drawn", /"d":"M[0-9.]+ [0-9.]+ L/.test(dailySerialized) && dailySerialized.indexOf("TPurse_sparkArea") !== -1);
 
 react.reset();
 react.seed({ 1: true });

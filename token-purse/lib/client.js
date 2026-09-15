@@ -225,6 +225,11 @@ window.__ModuleLoader__.load({
 		  ".TPurse_breakSub .TPurse_breakAmount{color:var(--dsw-alias-label-secondary)}" +
 		  ".TPurse_share{display:block;height:3px;margin:3px 0 0;border-radius:2px;background:var(--dsw-alias-fill-l2);overflow:hidden}" +
 		  ".TPurse_shareFill{display:block;height:100%;border-radius:2px;background:var(--dsw-alias-label-tertiary)}" +
+		  ".TPurse_sparkWrap{margin:2px 0 6px}" +
+		  ".TPurse_spark{display:block;width:100%;height:28px;overflow:visible}" +
+		  ".TPurse_sparkLine{fill:none;stroke:var(--dsw-alias-label-secondary);stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round}" +
+		  ".TPurse_sparkArea{fill:var(--dsw-alias-fill-l2);stroke:none}" +
+		  ".TPurse_sparkNote{display:block;margin-top:2px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:15px;font-variant-numeric:tabular-nums}" +
 		  ".TPurse_warnNote{margin-top:6px;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px;word-break:break-word}" +
 		  ".TPurse_sourceChip{flex:none;padding:0 6px;border-radius:999px;background:var(--dsw-alias-fill-l2,transparent);color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:15px}" +
 		  ".TPurse_sourceChipExact{color:var(--dsw-alias-label-secondary)}" +
@@ -284,6 +289,11 @@ window.__ModuleLoader__.load({
 		  breakSub: "TPurse_breakSub",
 		  share: "TPurse_share",
 		  shareFill: "TPurse_shareFill",
+		  sparkWrap: "TPurse_sparkWrap",
+		  spark: "TPurse_spark",
+		  sparkLine: "TPurse_sparkLine",
+		  sparkArea: "TPurse_sparkArea",
+		  sparkNote: "TPurse_sparkNote",
 		  warnNote: "TPurse_warnNote",
 		  sourceChip: "TPurse_sourceChip",
 		  sourceChipExact: "TPurse_sourceChipExact",
@@ -1043,6 +1053,61 @@ window.__ModuleLoader__.load({
 		  return days;
 		}
 
+		const SPARK_DAYS = 30;
+		const SPARK_VIEW_W = 100;
+		const SPARK_VIEW_H = 30;
+		const SPARK_PAD = 2;
+
+		/** 把稀疏的每日数据铺成连续的 count 天（缺的补 0），从旧到新。 */
+		function dailySeries(rows, count, now) {
+		  const byDay = new Map();
+		  for (const row of rows) byDay.set(row.day, row);
+		  const end = new Date(now);
+		  end.setHours(0, 0, 0, 0);
+		  const series = [];
+		  for (let offset = count - 1; offset >= 0; offset -= 1) {
+		    const date = new Date(end.getTime());
+		    date.setDate(date.getDate() - offset);
+		    const day = localDayKey(date.getTime());
+		    const row = byDay.get(day);
+		    series.push({ day, amount: row === undefined ? 0 : row.amount });
+		  }
+		  return series;
+		}
+
+		function roundCoord(value) {
+		  return Math.round(value * 100) / 100;
+		}
+
+		/** 折线坐标：x 均匀分布，y 按「相对最大值」落在 padding..height-padding。 */
+		function sparklinePoints(series, width, height, padding) {
+		  const inner = Math.max(height - padding * 2, 0);
+		  const span = Math.max(width - padding * 2, 0);
+		  const step = series.length > 1 ? span / (series.length - 1) : 0;
+		  let max = 0;
+		  for (const point of series) if (point.amount > max) max = point.amount;
+		  const points = series.map((point, index) => {
+		    const ratio = max > 0 ? point.amount / max : 0;
+		    return {
+		      x: roundCoord(padding + index * step),
+		      y: roundCoord(padding + (1 - ratio) * inner),
+		      amount: point.amount,
+		      day: point.day
+		    };
+		  });
+		  return { points, max };
+		}
+
+		function sparklineLine(points) {
+		  return points.map((point, index) => (index === 0 ? "M" : "L") + point.x + " " + point.y).join(" ");
+		}
+
+		function sparklineArea(points, height, padding) {
+		  if (points.length === 0) return "";
+		  const floor = roundCoord(height - padding);
+		  return sparklineLine(points) + " L" + points[points.length - 1].x + " " + floor + " L" + points[0].x + " " + floor + " Z";
+		}
+
 		/** "2026-09-11" -> "09-11" */
 		function formatDayKey(day) {
 		  const text = typeof day === "string" ? day : String(day);
@@ -1149,6 +1214,9 @@ window.__ModuleLoader__.load({
 		  );
 		  const dailyRows = dailyStats(daily, config);
 		  const modelRows = sessionModelRows(ledger, usage, selection, config, Date.now());
+		  const sparkSeries = dailySeries(dailyRows, SPARK_DAYS, Date.now());
+		  const spark = sparklinePoints(sparkSeries, SPARK_VIEW_W, SPARK_VIEW_H, SPARK_PAD);
+		  const sparkAvg = sparkSeries.reduce((sum, point) => sum + point.amount, 0) / SPARK_DAYS;
 
 		  if (rated === null) return null;
 
@@ -1365,6 +1433,29 @@ window.__ModuleLoader__.load({
 		                "div",
 		                { className: CSS.section },
 		                h("div", { className: CSS.sectionHead, title: t("daily.hint") }, t("daily.title")),
+		                spark.max <= 0
+		                  ? null
+		                  : h(
+		                      "div",
+		                      { className: CSS.sparkWrap },
+		                      h(
+		                        "svg",
+		                        {
+		                          className: CSS.spark,
+		                          viewBox: "0 0 " + SPARK_VIEW_W + " " + SPARK_VIEW_H,
+		                          preserveAspectRatio: "none",
+		                          role: "img",
+		                          "aria-label": t("spark.aria", { days: SPARK_DAYS, max: formatMoney(spark.max, symbol) })
+		                        },
+		                        h("path", { className: CSS.sparkArea, d: sparklineArea(spark.points, SPARK_VIEW_H, SPARK_PAD) }),
+		                        h("path", { className: CSS.sparkLine, d: sparklineLine(spark.points), vectorEffect: "non-scaling-stroke" })
+		                      ),
+		                      h(
+		                        "span",
+		                        { className: CSS.sparkNote },
+		                        t("spark.summary", { days: SPARK_DAYS, max: formatMoney(spark.max, symbol), avg: formatMoney(sparkAvg, symbol) })
+		                      )
+		                    ),
 		                dailyRows.slice(0, DAILY_VIEW_DAYS).map((day) =>
 		                  h(
 		                    "div",
@@ -1556,6 +1647,8 @@ window.__ModuleLoader__.load({
 		  "breakdown.byModelHint": "本会话各 provider / 模型的用量与花费",
 		  "daily.title": "每日",
 		  "daily.hint": "按观察时刻归入当天，保留最近 90 天",
+		  "spark.summary": "近 {days} 天 · 最高 {max} · 日均 {avg}",
+		  "spark.aria": "近 {days} 天花费折线图，最高 {max}",
 		  "peak.note": "{windows} · {timezone}",
 		  "rate.unpriced": "未配置 {model} 的费率，当前按通用兜底价估算——点下方「调整费率」补上。",
 		  "rate.source.provider": "专属费率",
@@ -1601,6 +1694,8 @@ window.__ModuleLoader__.load({
 		  "breakdown.byModelHint": "Tokens and spend per provider / model in this session",
 		  "daily.title": "Daily",
 		  "daily.hint": "Bucketed by observation time, last 90 days kept",
+		  "spark.summary": "Last {days} days · peak {max} · avg {avg}",
+		  "spark.aria": "Spend over the last {days} days, peak {max}",
 		  "peak.note": "{windows} · {timezone}",
 		  "rate.unpriced": "No rate configured for {model} — estimating with the generic fallback. Add it under Edit rates.",
 		  "rate.source.provider": "Provider rate",

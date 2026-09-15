@@ -186,6 +186,11 @@ The bottom of the panel lists the last few days' tokens and spend (up to 7):
   change past days.
 - A day is the local date of the **observation time**; as above, history from before the
   plugin was enabled lands on the day it was first observed. Deleting that key resets it.
+- Under the heading sits a **last-30-days spend sparkline** (plain SVG, no axes). Days with no
+  usage count as **0**, so the shape shows real gaps instead of a misleading straight line
+  between distant points; the peak and daily average are labelled next to it. It plots spend
+  only and carries an accessible label. With a fresh install there are few points, so the line
+  looks flat — that is expected until a few weeks of data accumulate.
 
 ## By provider and model
 
@@ -270,6 +275,8 @@ otherwise refresh the page.
 
 ## Changelog
 
+- **0.1.7**: a **last-30-days spend sparkline** above **Daily** (missing days zero-filled, peak
+  and average labelled).
 - **0.1.6**: the rates editor no longer says "USD", and a **legacy USD config from 0.1.0 is
   upgraded to CNY** once.
 - **0.1.5**: a **By model** breakdown (per provider/model spend for this session, with share
