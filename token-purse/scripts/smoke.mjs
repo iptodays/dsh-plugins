@@ -565,6 +565,66 @@ check(
   )
 );
 check("animations respect reduced motion", cssSource.indexOf("prefers-reduced-motion:reduce") !== -1);
+
+/* ── 3a. 主题 token 护栏 ─────────────────────────────────────────────── */
+/*
+ * 面板只允许引用主题包里真实存在的 token。此前 --dsw-alias-fill-l2 / --dsw-font-mono /
+ * --dsw-static-yellow-500 三个 token 并不存在：在 background 位置失效只是变透明，但在
+ * fill 位置（fill 可继承）会退化成黑色，把折线面积画成一块黑楔形。
+ */
+const themeSnapshot = JSON.parse(readFileSync(join(root, "scripts", "theme-tokens.json"), "utf8"));
+const themeTokens = new Set(themeSnapshot.tokens);
+const referencedTokens = new Set();
+for (const match of cssSource.matchAll(/(?:var\(|")(--dsw-[a-z0-9-]+)/g)) referencedTokens.add(match[1]);
+const missingTokens = Array.from(referencedTokens).filter((name) => !themeTokens.has(name));
+check(
+  "every theme token the panel references exists (" + referencedTokens.size + " checked against " + themeTokens.size + ")",
+  referencedTokens.size > 15 && missingTokens.length === 0
+);
+if (missingTokens.length > 0) console.error("       unknown: " + missingTokens.join(", "));
+
+/* 对比度：正文只允许用实测达标的组合（WCAG 2.1 AA，普通文字 4.5:1）。 */
+const relativeLuminance = (hex) => {
+  const channels = [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16) / 255);
+  const linear = channels.map((channel) => (channel <= 0.03928 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4)));
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+};
+const contrastRatio = (one, two) => {
+  const a = relativeLuminance(one);
+  const b = relativeLuminance(two);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+};
+const alphaOf = (hex) => (hex.length === 9 ? parseInt(hex.slice(7, 9), 16) / 255 : 1);
+/* 主题里有半透明底（如 interactive-bg-hover 是 6% 黑），必须先压到面板底色上再算。 */
+const flatten = (color, base) => {
+  const alpha = alphaOf(color);
+  if (alpha >= 1) return color;
+  const mixed = [1, 3, 5].map((at) => {
+    const top = parseInt(color.slice(at, at + 2), 16);
+    const bottom = parseInt(base.slice(at, at + 2), 16);
+    return Math.round(top * alpha + bottom * (1 - alpha));
+  });
+  return "#" + mixed.map((value) => value.toString(16).padStart(2, "0")).join("");
+};
+const TEXT_PAIRS = [
+  ["--dsw-alias-label-primary", "--dsw-specific-menu", "总额 / 金额"],
+  ["--dsw-alias-label-secondary", "--dsw-specific-menu", "标签 / 说明"],
+  ["--dsw-alias-label-secondary", "--dsw-alias-interactive-bg-hover", "输入框内文字"],
+  ["--dsw-alias-label-primary", "--dsw-alias-button-ghost-active-fill", "选中页签"],
+  ["--dsw-static-amber-900", "--dsw-static-amber-400", "峰谷 chip"]
+];
+for (const [foreground, background, label] of TEXT_PAIRS) {
+  for (const mode of ["light", "dark"]) {
+    const front = themeSnapshot.values[foreground] && themeSnapshot.values[foreground][mode];
+    const back = themeSnapshot.values[background] && themeSnapshot.values[background][mode];
+    const surface = themeSnapshot.values["--dsw-specific-menu"][mode];
+    const ratio = front && back ? contrastRatio(front, flatten(back, surface)) : 0;
+    check(
+      "AA contrast " + mode + " · " + label + " " + ratio.toFixed(2) + ":1",
+      ratio >= 4.5
+    );
+  }
+}
 const t = (key, params) => key + (params ? "|" + JSON.stringify(params) : "");
 react.reset();
 const empty = internals.TokenPurseView({ usage: undefined, selection: undefined, t });
