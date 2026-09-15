@@ -349,6 +349,55 @@ check(
 const aggEmpty = internals.aggregateDaily([]);
 check("aggregateDaily handles an empty store", aggEmpty.days === 0 && aggEmpty.sessions === 0 && aggEmpty.rows.length === 0 && aggEmpty.amount === 0);
 
+/* ── 项目维度 ─────────────────────────────────────────────────────── */
+
+check(
+  "sessionDayRows carries the project",
+  internals.sessionDayRows(dayLedger, ledgerConfig, "/w/alpha").every((row) => row.w === "/w/alpha") &&
+    internals.sessionDayRows(dayLedger, ledgerConfig).every((row) => row.w === "")
+);
+const projectStore = internals.mergeSessionDayRows(internals.emptyDaily(), "s1", internals.sessionDayRows(dayLedger, ledgerConfig, "/w/alpha"), day2);
+check("mergeSessionDayRows keeps the project", projectStore.days["2025-01-06"][0].w === "/w/alpha");
+check(
+  "normalizeDaily round-trips the project",
+  internals.normalizeDaily(JSON.parse(JSON.stringify(projectStore))).days["2025-01-06"][0].w === "/w/alpha"
+);
+const legacyStore = internals.normalizeDaily({ days: { "2025-01-06": [{ s: "s1", b: { uncachedInputTokens: 5 } }] } });
+check("rows without a project normalise to null", legacyStore.days["2025-01-06"][0].w === null);
+
+const bucketOf = (n) => ({ uncachedInputTokens: n, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 });
+const projStore = {
+  v: 1,
+  days: {
+    "2025-01-06": [
+      { s: "sA", w: "/w/alpha", p: "packyapi", m: "deepseek-flash", k: "o", b: bucketOf(3000000) },
+      { s: "sB", w: "/w/alpha", p: "packyapi", m: "deepseek-flash", k: "o", b: bucketOf(1000000) },
+      { s: "sC", w: "/w/beta", p: "packyapi", m: "deepseek-flash", k: "o", b: bucketOf(2000000) }
+    ],
+    "2025-01-05": [{ s: "sC", w: "/w/beta", p: "packyapi", m: "deepseek-flash", k: "o", b: bucketOf(1000000) }]
+  }
+};
+const projAgg = internals.aggregateDaily(internals.dailyStats(projStore, ledgerConfig));
+check(
+  "aggregateDaily groups by project, biggest first",
+  projAgg.projects.length === 2 &&
+    projAgg.projects[0].key === "/w/alpha" &&
+    Math.abs(projAgg.projects[0].amount - 3.2) < 1e-9 &&
+    projAgg.projects[1].key === "/w/beta"
+);
+check(
+  "each project carries its own sessions",
+  projAgg.projects[0].sessions.length === 2 &&
+    projAgg.projects[0].sessions.map((session) => session.key).join(",") === "sA,sB" &&
+    projAgg.projects[1].sessions.length === 1 &&
+    projAgg.projects[1].sessions[0].tokens === 3000000
+);
+check(
+  "project totals add up to the whole",
+  Math.abs(projAgg.projects.reduce((sum, item) => sum + item.amount, 0) - projAgg.amount) < 1e-9 &&
+    projAgg.projects.reduce((sum, item) => sum + item.sessions.length, 0) === 3
+);
+
 const peakDayStore = internals.mergeSessionDayRows(
   internals.emptyDaily(),
   "s1",
@@ -602,6 +651,28 @@ check(
     hoverTip[1] === "01-06" &&
     hoverTip[2] === "¥1.00"
 );
+react.reset();
+react.seed({ 1: true, 2: "project", 13: "all", 10: projStore, 15: "/w/alpha" });
+const projectSerialized = JSON.stringify(
+  dailyInternals.TokenPurseView({
+    usage,
+    selection,
+    t,
+    sessionId: "sA",
+    project: "/w/alpha",
+    sessionsById: { sA: { displayTitle: "会话甲" }, sB: { displayTitle: "会话乙" }, sC: { displayTitle: "会话丙" } }
+  })
+);
+check(
+  "project tab lists each project and its sessions",
+  projectSerialized.indexOf("tab.project") !== -1 &&
+    projectSerialized.indexOf("alpha") !== -1 &&
+    projectSerialized.indexOf("beta") !== -1 &&
+    projectSerialized.indexOf("会话甲") !== -1 &&
+    projectSerialized.indexOf("会话乙") !== -1 &&
+    projectSerialized.indexOf("会话丙") === -1
+);
+check("project tab is hidden in session scope", modelSerialized.indexOf("tab.project") === -1);
 check(
   "sparkline is keyboard reachable",
   dailySerialized.indexOf('"tabIndex":0') !== -1 && cssSource.indexOf("ArrowLeft") !== -1 && cssSource.indexOf("ArrowRight") !== -1

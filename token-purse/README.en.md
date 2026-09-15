@@ -32,7 +32,8 @@ rendered at a time**. From top to bottom:
 2. the **scope**: Session / All time;
 3. **token buckets** (input / cache read / output + total);
 4. the **current bracket** (peak / off-peak, with window and multiplier);
-5. the **segmented tabs** and the active tab's content;
+5. the **segmented tabs** — Models / Peak / Daily, plus **Projects** in the All time scope —
+   only the active one is rendered;
 6. the disclaimer, then **Edit rates**.
 
 ### Scope: Session / All time
@@ -60,6 +61,14 @@ reports the days, sessions and models actually covered.
 When several pages are open (multiple tabs, or a stale tab you forgot to close), the merge
 **re-reads localStorage** before writing back, so an old page cannot wipe records for sessions
 it never saw.
+
+**All time splits by project and session.** Its first tab is **Projects**: one row per project
+(directory name; hover for the full path, tokens, amount and a share bar). Click one to list
+**every session** under it and what each spent, using the session's title where available. A
+single project expands automatically. The project comes from the session's **working
+directory** and is written into the daily store with each record, so **older rows** (recorded
+before 0.1.14) start under "Unknown project" and get corrected the next time you open that
+session.
 
 The **Daily** tab has always spanned sessions, so the scope does not affect it.
 
@@ -376,6 +385,11 @@ otherwise refresh the page.
 
 ## Changelog
 
+- **0.1.14**: All time gained a **Projects** tab that lists spend per **project → session**:
+  a project row shows its directory name, tokens, amount and share bar, and expanding it lists
+  each session under it (using the session title when available). The project comes from the
+  session's working directory and is stored with every record (older rows start under "Unknown
+  project" and are corrected when that session is next opened).
 - **0.1.13**: fixed **All time being wiped by a stale page**. The merge now **re-reads
   localStorage** before writing back; previously it overwrote the store with its in-memory copy,
   so a second tab (or a forgotten old page) could write back a snapshot that predated other

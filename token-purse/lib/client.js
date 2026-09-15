@@ -236,7 +236,7 @@ window.__ModuleLoader__.load({
 		  ".TPurse_sparkArea{fill:var(--dsw-alias-fill-l2);stroke:none;animation:tp-fade .5s ease-out .3s both}" +
 		  ".TPurse_sparkNote{display:block;margin-top:2px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:15px;font-variant-numeric:tabular-nums}" +
 		  ".TPurse_tabs{display:flex;gap:2px;margin-top:10px;padding:2px;border-radius:8px;background:var(--dsw-alias-fill-l2)}" +
-		  ".TPurse_tab{flex:1 1 0;min-width:0;padding:3px 6px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;font-family:inherit;cursor:pointer;transition:background-color .14s ease,color .14s ease}" +
+		  ".TPurse_tab{flex:1 1 0;min-width:0;padding:3px 6px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;font-family:inherit;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background-color .14s ease,color .14s ease}" +
 		  ".TPurse_tabOn{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);font-weight:500}" +
 		  ".TPurse_sectionFlat{margin-top:8px;padding-top:0;border-top:0}" +
 		  ".TPurse_dayRow{width:100%;padding:0;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer;transition:color .12s ease}" +
@@ -927,6 +927,7 @@ window.__ModuleLoader__.load({
 		      if (row === null || row === undefined || typeof row !== "object") continue;
 		      kept.push({
 		        s: typeof row.s === "string" ? row.s : null,
+		        w: typeof row.w === "string" && row.w.length > 0 ? row.w : null,
 		        p: typeof row.p === "string" ? row.p : null,
 		        m: typeof row.m === "string" ? row.m : null,
 		        k: normalizePeakFlag(row.k),
@@ -956,9 +957,10 @@ window.__ModuleLoader__.load({
 		}
 
 		/** 把会话账本折算成「天 × 模型 × 峰谷」的桶；重复计算同一账本结果一致（幂等）。 */
-		function sessionDayRows(ledger, config) {
+		function sessionDayRows(ledger, config, project) {
 		  const peak = parsePeak(config);
 		  const rows = new Map();
+		  const projectKey = typeof project === "string" && project.length > 0 ? project : "";
 		  const push = (buckets, provider, model, moment) => {
 		    const day = localDayKey(moment);
 		    const rates = resolveRates(config, model, provider);
@@ -966,7 +968,7 @@ window.__ModuleLoader__.load({
 		    const key = day + "\u0000" + (provider === null ? "" : provider) + "\u0000" + (model === null ? "" : model) + "\u0000" + flag;
 		    let row = rows.get(key);
 		    if (row === undefined) {
-		      row = { d: day, p: provider, m: model, k: flag, b: zeroBuckets() };
+		      row = { d: day, w: projectKey, p: provider, m: model, k: flag, b: zeroBuckets() };
 		      rows.set(key, row);
 		    }
 		    for (const bucket of BUCKETS) row.b[bucket] += buckets[bucket];
@@ -1084,7 +1086,7 @@ window.__ModuleLoader__.load({
 		  }
 		  for (const row of rows) {
 		    if (next.days[row.d] === undefined) next.days[row.d] = [];
-		    next.days[row.d].push({ s: key, p: row.p, m: row.m, k: row.k, b: row.b });
+		    next.days[row.d].push({ s: key, w: typeof row.w === "string" && row.w.length > 0 ? row.w : null, p: row.p, m: row.m, k: row.k, b: row.b });
 		  }
 		  const cutoff = localDayKey(now - DAILY_KEEP_DAYS * 24 * 60 * 60 * 1000);
 		  for (const day of Object.keys(next.days)) if (day < cutoff) delete next.days[day];
@@ -1106,11 +1108,24 @@ window.__ModuleLoader__.load({
 		    };
 		    const buckets = zeroBuckets();
 		    const bucketAmounts = zeroBuckets();
+		    const byProject = new Map();
 		    const sessionIds = new Set();
 		    let amount = 0;
 		    let tokens = 0;
 		    for (const row of store.days[day]) {
-		      sessionIds.add(typeof row.s === "string" ? row.s : "\u0000unknown");
+		      sessionIds.add(sessionKey(row.s));
+		      const rowProject = typeof row.w === "string" ? row.w : "";
+		      let projectEntry = byProject.get(rowProject);
+		      if (projectEntry === undefined) {
+		        projectEntry = { key: rowProject, tokens: 0, amount: 0, sessions: new Map() };
+		        byProject.set(rowProject, projectEntry);
+		      }
+		      const rowSession = sessionKey(row.s);
+		      let sessionEntry = projectEntry.sessions.get(rowSession);
+		      if (sessionEntry === undefined) {
+		        sessionEntry = { key: rowSession, tokens: 0, amount: 0 };
+		        projectEntry.sessions.set(rowSession, sessionEntry);
+		      }
 		      const flag = normalizePeakFlag(row.k);
 		      const rates = resolveRates(config, row.m, row.p);
 		      const factor = flag === "p" && rates.peakMultiplier > 1 ? rates.peakMultiplier : 1;
@@ -1137,15 +1152,25 @@ window.__ModuleLoader__.load({
 		        entry.amount += value;
 		        groups[flag].amount += value;
 		        bucketAmounts[bucket] += value;
+		        projectEntry.amount += value;
+		        sessionEntry.amount += value;
 		        tokens += row.b[bucket];
 		        entry.tokens += row.b[bucket];
 		        groups[flag].tokens += row.b[bucket];
 		        buckets[bucket] += row.b[bucket];
+		        projectEntry.tokens += row.b[bucket];
+		        sessionEntry.tokens += row.b[bucket];
 		      }
 		    }
 		    const models = Array.from(byModel.values());
 		    models.sort((left, right) => right.amount - left.amount);
-		    days.push({ day, amount, tokens, models, groups, buckets, bucketAmounts, sessionIds: Array.from(sessionIds) });
+		    const projects = Array.from(byProject.values()).map((item) => {
+		      const items = Array.from(item.sessions.values());
+		      items.sort((left, right) => right.amount - left.amount);
+		      return { key: item.key, tokens: item.tokens, amount: item.amount, sessions: items };
+		    });
+		    projects.sort((left, right) => right.amount - left.amount);
+		    days.push({ day, amount, tokens, models, groups, projects, buckets, bucketAmounts, sessionIds: Array.from(sessionIds) });
 		  }
 		  days.sort((left, right) => (left.day < right.day ? 1 : left.day > right.day ? -1 : 0));
 		  return days;
@@ -1162,6 +1187,7 @@ window.__ModuleLoader__.load({
 		  const flagOf = { p: "peak", o: "off", f: "flat" };
 		  const buckets = zeroBuckets();
 		  const bucketAmounts = zeroBuckets();
+		  const byProject = new Map();
 		  const sessions = new Set();
 		  let amount = 0;
 		  let tokens = 0;
@@ -1172,6 +1198,24 @@ window.__ModuleLoader__.load({
 		    for (const bucket of BUCKETS) {
 		      buckets[bucket] += day.buckets[bucket];
 		      bucketAmounts[bucket] += day.bucketAmounts[bucket];
+		    }
+		    for (const project of day.projects) {
+		      let projectEntry = byProject.get(project.key);
+		      if (projectEntry === undefined) {
+		        projectEntry = { key: project.key, tokens: 0, amount: 0, sessions: new Map() };
+		        byProject.set(project.key, projectEntry);
+		      }
+		      projectEntry.tokens += project.tokens;
+		      projectEntry.amount += project.amount;
+		      for (const session of project.sessions) {
+		        let sessionEntry = projectEntry.sessions.get(session.key);
+		        if (sessionEntry === undefined) {
+		          sessionEntry = { key: session.key, tokens: 0, amount: 0 };
+		          projectEntry.sessions.set(session.key, sessionEntry);
+		        }
+		        sessionEntry.tokens += session.tokens;
+		        sessionEntry.amount += session.amount;
+		      }
 		    }
 		    for (const model of day.models) {
 		      let entry = models.get(model.key);
@@ -1188,6 +1232,12 @@ window.__ModuleLoader__.load({
 		      target.amount += day.groups[flag].amount;
 		    }
 		  }
+		  const projectRows = Array.from(byProject.values()).map((item) => {
+		    const items = Array.from(item.sessions.values());
+		    items.sort((left, right) => right.amount - left.amount);
+		    return { key: item.key, tokens: item.tokens, amount: item.amount, sessions: items };
+		  });
+		  projectRows.sort((left, right) => right.amount - left.amount);
 		  const modelRows = Array.from(models.values());
 		  modelRows.sort((left, right) => right.amount - left.amount);
 		  const peakRows = [groups.off, groups.peak, groups.flat].filter((row) => row.tokens > 0);
@@ -1198,7 +1248,7 @@ window.__ModuleLoader__.load({
 		    tokens: buckets[definition.key],
 		    amount: bucketAmounts[definition.key]
 		  }));
-		  return { amount, tokens, rows, models: modelRows, peakRows, groups, days: days.length, sessions: sessions.size };
+		  return { amount, tokens, rows, projects: projectRows, models: modelRows, peakRows, groups, days: days.length, sessions: sessions.size };
 		}
 
 		const SPARK_DAYS = 30;
@@ -1213,8 +1263,12 @@ window.__ModuleLoader__.load({
 		  { key: "all", label: "scope.all" }
 		];
 
-		/* 三种分解方式，同一时间只展开一个。 */
+		/* 「项目」那一档明确全部收起（区别于「还没手动切换过」）。 */
+		const PROJECT_CLOSED = "\u0000closed";
+
+		/* 分解方式，同一时间只展开一个；allOnly 的只在累计档出现。 */
 		const TABS = [
+		  { key: "project", label: "tab.project", hint: "project.hint", allOnly: true },
 		  { key: "model", label: "tab.model", hint: "breakdown.byModelHint" },
 		  { key: "peak", label: "tab.peak", hint: "peak.splitHint" },
 		  { key: "daily", label: "tab.daily", hint: "daily.hint" }
@@ -1305,7 +1359,7 @@ window.__ModuleLoader__.load({
 
 		/* ──────────────────────────────── 组件 ──────────────────────────────── */
 
-		function TokenPurseView({ usage, selection, t, sessionId }) {
+		function TokenPurseView({ usage, selection, t, sessionId, project, sessionsById }) {
 		  const [config, setConfig] = useState(readConfig);
 		  const [open, setOpen] = useState(false);
 		  const [tab, setTab] = useState(TABS[0].key);
@@ -1321,6 +1375,7 @@ window.__ModuleLoader__.load({
 		  const [closing, setClosing] = useState(false);
 		  const [scope, setScope] = useState(SCOPES[0].key);
 		  const [sparkHover, setSparkHover] = useState(null);
+		  const [openProject, setOpenProject] = useState(null);
 		  const rootRef = useRef(null);
 		  const closeTimer = useRef(null);
 
@@ -1379,9 +1434,9 @@ window.__ModuleLoader__.load({
 		     每次都从 localStorage 重新读再合并——否则另一个标签页/旧页面里的内存副本
 		     写回时会把它没见过的会话整段抹掉。 */
 		  useEffect(() => {
-		    const rows = sessionDayRows(ledger, config);
+		    const rows = sessionDayRows(ledger, config, project);
 		    setDaily(() => mergeSessionDayRows(readDaily(), sessionId, rows, Date.now()));
-		  }, [sessionId, ledger, config]);
+		  }, [sessionId, ledger, config, project]);
 
 		  useEffect(() => {
 		    writeDaily(daily);
@@ -1399,7 +1454,10 @@ window.__ModuleLoader__.load({
 		  );
 		  const dailyRows = dailyStats(daily, config);
 		  const modelRows = sessionModelRows(ledger, usage, selection, config, Date.now());
-		  const activeTab = TABS.find((item) => item.key === tab) || TABS[0];
+		  /* 切到「本会话」时「项目」这一档不可用，回退到第一个可见页签。 */
+		  const visibleTabs = TABS.filter((item) => scope === "all" || item.allOnly !== true);
+		  const shownTab = visibleTabs.some((item) => item.key === tab) ? tab : visibleTabs[0].key;
+		  const activeTab = TABS.find((item) => item.key === shownTab) || TABS[0];
 		  const peakRows = splitByPeak(ledger, usage, selection, config, Date.now());
 		  const sparkSeries = dailySeries(dailyRows, SPARK_DAYS, Date.now());
 		  const spark = sparklinePoints(sparkSeries, SPARK_VIEW_W, SPARK_VIEW_H, SPARK_PAD);
@@ -1423,6 +1481,21 @@ window.__ModuleLoader__.load({
 		  const allTimeText = t("scope.summary", { days: allTime.days, sessions: allTime.sessions, models: allTime.models.length });
 
 		  /* 折线悬浮读数：命中区按数据点均分，鼠标或左右方向键移动游标。 */
+		  /* 项目名只显示最后一段目录名，完整路径放 title；会话名优先用会话列表里的标题。 */
+		  const projectLabel = (key) => {
+		    if (key.length === 0) return t("project.unknown");
+		    const parts = key.split(/[\\/]+/).filter((part) => part.length > 0);
+		    return parts.length === 0 ? key : parts[parts.length - 1];
+		  };
+		  const sessionLabel = (key) => {
+		    if (key === "\u0000unknown" || key.length === 0) return t("breakdown.unknown");
+		    const summary = sessionsById === undefined || sessionsById === null ? undefined : sessionsById[key];
+		    const title = summary === undefined || summary === null ? undefined : summary.displayTitle;
+		    return typeof title === "string" && title.length > 0 ? title : key.slice(0, 8);
+		  };
+		  const isProjectOpen = (item) =>
+		    openProject === PROJECT_CLOSED ? false : openProject === item.key ? true : allTime.projects.length === 1;
+
 		  const sparkLast = spark.points.length - 1;
 		  const sparkStep = sparkLast > 0 ? (spark.points[sparkLast].x - spark.points[0].x) / sparkLast : 0;
 		  const sparkPoint = sparkHover === null ? null : spark.points[sparkHover] || null;
@@ -1650,15 +1723,16 @@ window.__ModuleLoader__.load({
 		          h(
 		            "div",
 		            { className: CSS.tabs, role: "tablist" },
-		            TABS.map((item) =>
+		            visibleTabs.map((item) =>
 		              h(
 		                "button",
 		                {
 		                  key: item.key,
 		                  type: "button",
 		                  role: "tab",
-		                  "aria-selected": tab === item.key,
-		                  className: tab === item.key ? CSS.tab + " " + CSS.tabOn : CSS.tab,
+		                  "aria-selected": shownTab === item.key,
+		                  className: shownTab === item.key ? CSS.tab + " " + CSS.tabOn : CSS.tab,
+		                  title: t(item.hint),
 		                  onClick: () => setTab(item.key)
 		                },
 		                t(item.label)
@@ -1667,8 +1741,59 @@ window.__ModuleLoader__.load({
 		          ),
 		          h(
 		            "div",
-		            { className: CSS.section + " " + CSS.sectionFlat + " " + CSS.tabBody, key: tab, title: t(activeTab.hint) },
-		            tab === "model"
+		            { className: CSS.section + " " + CSS.sectionFlat + " " + CSS.tabBody, key: shownTab, title: t(activeTab.hint) },
+		            shownTab === "project"
+		              ? allTime.projects.length === 0
+		                ? h("div", { className: CSS.breakRow }, h("span", { className: CSS.peakLine }, t("project.empty")))
+		                : allTime.projects.map((item) => {
+		                    const expanded = isProjectOpen(item);
+		                    return h(
+		                      "div",
+		                      { className: CSS.breakItem, key: item.key.length === 0 ? "\u0000none" : item.key },
+		                      h(
+		                        "button",
+		                        {
+		                          type: "button",
+		                          className: CSS.breakRow + " " + CSS.dayRow,
+		                          "aria-expanded": expanded,
+		                          onClick: () => setOpenProject(expanded ? PROJECT_CLOSED : item.key)
+		                        },
+		                        h(
+		                          "span",
+		                          { className: CSS.breakLabel, title: item.key.length === 0 ? undefined : item.key },
+		                          projectLabel(item.key)
+		                        ),
+		                        h("span", { className: CSS.breakTokens }, formatTokens(item.tokens)),
+		                        h("span", { className: CSS.breakAmount }, formatMoney(item.amount, symbol))
+		                      ),
+		                      h(
+		                        "span",
+		                        { className: CSS.share },
+		                        h("span", { className: CSS.shareFill, style: { width: sharePercent(item.amount, scopeTotal) + "%" } })
+		                      ),
+		                      expanded
+		                        ? h(
+		                            "div",
+		                            { className: CSS.breakSub },
+		                            h(
+		                              "div",
+		                              { className: CSS.breakRow },
+		                              h("span", { className: CSS.peakLine }, t("project.sessions", { n: item.sessions.length }))
+		                            ),
+		                            item.sessions.map((session) =>
+		                              h(
+		                                "div",
+		                                { className: CSS.breakRow, key: session.key },
+		                                h("span", { className: CSS.breakLabel, title: session.key }, sessionLabel(session.key)),
+		                                h("span", { className: CSS.breakTokens }, formatTokens(session.tokens)),
+		                                h("span", { className: CSS.breakAmount }, formatMoney(session.amount, symbol))
+		                              )
+		                            )
+		                          )
+		                        : null
+		                    );
+		                  })
+		              : shownTab === "model"
 		              ? scopeModelRows.length < 2
 		                ? h("div", { className: CSS.breakRow }, h("span", { className: CSS.peakLine }, t("breakdown.singleModel")))
 		                : scopeModelRows.map((row) =>
@@ -1689,7 +1814,7 @@ window.__ModuleLoader__.load({
 		                      )
 		                    )
 		                  )
-		              : tab === "peak"
+		              : shownTab === "peak"
 		                ? scopePeakRows.length === 0
 		                  ? h("div", { className: CSS.breakRow }, h("span", { className: CSS.peakLine }, t("peak.splitNone")))
 		                  : scopePeakRows.map((row) =>
@@ -1929,9 +2054,18 @@ window.__ModuleLoader__.load({
 		 *   2. 用 portal 把徽标挂进该行，使其成为同一 flex 行里的一枚 pill；
 		 *   3. 行消失（空会话）时自动卸载，行重建（切换会话）时自动重挂。
 		 */
-		function StatsRowBadge({ useProjection, t, sessionId }) {
+		/** useSessions 缺席时的占位（不调用任何 hook）。 */
+		function noSessions() {
+		  return undefined;
+		}
+
+		function StatsRowBadge({ useProjection, useSessions, t, sessionId }) {
 		  const usage = useProjection("tokenUsage");
 		  const selection = useProjection("modelSelection");
+		  /* 会话列表给出每个会话的工作目录（项目）与标题；测试里可能不传这个 hook。 */
+		  const readSessions = typeof useSessions === "function" ? useSessions : noSessions;
+		  const sessionsById = readSessions((state) => (state === undefined || state === null ? undefined : state.byId));
+		  const summary = sessionsById === undefined || sessionsById === null || sessionId === undefined ? undefined : sessionsById[sessionId];
 		  const anchorRef = useRef(null);
 		  const [host, setHost] = useState(null);
 
@@ -1953,7 +2087,16 @@ window.__ModuleLoader__.load({
 		  const anchor = h("span", { ref: anchorRef, className: CSS.host, "aria-hidden": "true" });
 		  if (host === null) return anchor;
 		  /* key 让面板按会话重建：账本等会话内状态就不会被下一个会话沿用。 */
-		  return h(React.Fragment, null, anchor, createPortal(h(TokenPurseView, { key: String(sessionId), usage, selection, t, sessionId }), host));
+		  const props = {
+		    key: String(sessionId),
+		    usage,
+		    selection,
+		    t,
+		    sessionId,
+		    project: summary === undefined || summary === null ? undefined : summary.cwd,
+		    sessionsById
+		  };
+		  return h(React.Fragment, null, anchor, createPortal(h(TokenPurseView, props), host));
 		}
 
 		/* ──────────────────────────────── 词条 ──────────────────────────────── */
@@ -2000,6 +2143,11 @@ window.__ModuleLoader__.load({
 		  "scope.empty": "还没有累计记录，用几个会话后这里会有数据。",
 		  "scope.coverage": "只统计本插件记录过的会话；安装之前、或从未打开过的会话不在其中。",
 		  "spark.tip": "{day} · {amount}",
+		  "tab.project": "项目",
+		  "project.hint": "按项目与会话汇总全部记录",
+		  "project.empty": "还没有按项目统计的数据",
+		  "project.unknown": "未记录项目",
+		  "project.sessions": "{n} 个会话",
 		  "tab.model": "模型",
 		  "tab.peak": "峰谷",
 		  "tab.daily": "每日",
@@ -2062,6 +2210,11 @@ window.__ModuleLoader__.load({
 		  "scope.empty": "No accumulated records yet — this fills in after a few sessions.",
 		  "scope.coverage": "Only sessions this plugin has recorded are counted — sessions never opened, or from before it was installed, are not included.",
 		  "spark.tip": "{day} · {amount}",
+		  "tab.project": "Projects",
+		  "project.hint": "Totals per project and session",
+		  "project.empty": "No per-project totals yet",
+		  "project.unknown": "Unknown project",
+		  "project.sessions": "{n} sessions",
 		  "tab.model": "Models",
 		  "tab.peak": "Peak",
 		  "tab.daily": "Daily",
