@@ -111,7 +111,7 @@ function loadInternals(react, now, extra) {
   const sandbox = makeSandbox(react, extra, now);
   const source =
     readFileSync(join(root, "src", "client.js"), "utf8") +
-    "\nexports.__test = { rateUsage, rateLedger, resolveRates, mergeConfig, formatMoney, formatTokens, formatRate, DEFAULT_CONFIG, TokenPurseView, matchCurrencyPreset, findCurrencyPreset, fetchUsdRate, parsePeakWindow, parsePeak, isPeakAt, ratesAt, emptyLedger, syncLedger, migrateConfigV1, rateSource, CURRENCY_PRESETS, localDayKey, sessionModelRows, formatModelLabel, sharePercent, legacyCurrencyConfig, migrateLegacyCurrency, readConfig, dailySeries, sparklinePoints, sparklineLine, sparklineArea, SPARK_DAYS, splitByPeak, ledgerSegments, priceSegment, normalizePeakFlag, sessionDayRows, mergeSessionDayRows, dailyStats, normalizeDaily, emptyDaily, formatDayKey };\n";
+    "\nexports.__test = { rateUsage, rateLedger, resolveRates, mergeConfig, formatMoney, formatTokens, formatRate, DEFAULT_CONFIG, TokenPurseView, matchCurrencyPreset, findCurrencyPreset, fetchUsdRate, parsePeakWindow, parsePeak, isPeakAt, ratesAt, emptyLedger, syncLedger, migrateConfigV1, rateSource, CURRENCY_PRESETS, localDayKey, sessionModelRows, formatModelLabel, sharePercent, legacyCurrencyConfig, migrateLegacyCurrency, readConfig, dailySeries, sparklinePoints, sparklineLine, sparklineArea, SPARK_DAYS, aggregateDaily, splitByPeak, ledgerSegments, priceSegment, normalizePeakFlag, sessionDayRows, mergeSessionDayRows, dailyStats, normalizeDaily, emptyDaily, formatDayKey };\n";
   vm.runInContext(source, sandbox);
   return sandbox.exports.__test;
 }
@@ -330,6 +330,25 @@ check(
   "dailyStats carries per-model rows",
   dayStatRows[0].models.length === 1 && dayStatRows[0].models[0].label === null && Math.abs(dayStatRows[0].models[0].amount - dayStatRows[0].amount) < 1e-9
 );
+const aggAll = internals.aggregateDaily(dayStatRows);
+check(
+  "aggregateDaily sums the whole store",
+  aggAll.days === 2 && aggAll.sessions === 2 && aggAll.tokens === 6000000 && Math.abs(aggAll.amount - 6) < 1e-9
+);
+check(
+  "aggregateDaily keeps buckets, models and brackets in sync with the total",
+  Math.abs(aggAll.rows.reduce((sum, row) => sum + row.amount, 0) - aggAll.amount) < 1e-9 &&
+    aggAll.rows.reduce((sum, row) => sum + row.tokens, 0) === aggAll.tokens &&
+    aggAll.models.length === 1 &&
+    Math.abs(aggAll.models[0].amount - aggAll.amount) < 1e-9 &&
+    Math.abs(aggAll.peakRows.reduce((sum, row) => sum + row.amount, 0) - aggAll.amount) < 1e-9 &&
+    aggAll.peakRows.length === 1 &&
+    /* 该 fixture 的账本行没记模型，回退兜底费率（peakMultiplier 1）所以算平价。 */
+    aggAll.peakRows[0].key === "flat"
+);
+const aggEmpty = internals.aggregateDaily([]);
+check("aggregateDaily handles an empty store", aggEmpty.days === 0 && aggEmpty.sessions === 0 && aggEmpty.rows.length === 0 && aggEmpty.amount === 0);
+
 const peakDayStore = internals.mergeSessionDayRows(
   internals.emptyDaily(),
   "s1",
@@ -348,6 +367,16 @@ check(
     Math.abs(peakDayStats[0].groups.f.amount - 1) < 1e-9 &&
     peakDayStats[0].groups.p.tokens === 1000000 &&
     Math.abs(peakDayStats[0].amount - peakDayStats[0].groups.p.amount - peakDayStats[0].groups.o.amount - peakDayStats[0].groups.f.amount) < 1e-9
+);
+
+const aggPeak = internals.aggregateDaily(internals.dailyStats(peakDayStore, ledgerConfig));
+check(
+  "aggregateDaily merges brackets",
+  aggPeak.peakRows.length === 3 &&
+    aggPeak.peakRows[0].key === "peak" &&
+    aggPeak.peakRows[1].key === "off" &&
+    Math.abs(aggPeak.peakRows.reduce((sum, row) => sum + row.amount, 0) - aggPeak.amount) < 1e-9 &&
+    Math.abs(aggPeak.amount - 4) < 1e-9
 );
 
 const multiDayStore = internals.mergeSessionDayRows(
@@ -493,7 +522,7 @@ react.reset();
 react.seed({ 1: false, 12: false });
 const noPanelSerialized = JSON.stringify(modelInternals.TokenPurseView({ usage, selection, t }));
 check("closed panel renders nothing", noPanelSerialized.indexOf("TPurse_panel") === -1 && noPanelSerialized.indexOf("panel.title") === -1);
-check("panel renders three tabs", (modelSerialized.match(/"role":"tab"/g) || []).length === 3 && modelSerialized.indexOf("TPurse_tabOn") !== -1);
+check("panel renders the scope and tab switches", (modelSerialized.match(/"role":"tab"/g) || []).length === 5 && modelSerialized.indexOf("TPurse_tabOn") !== -1);
 check(
   "settings stay behind the editor",
   modelSerialized.indexOf("TPurse_select") === -1 && modelSerialized.indexOf("TPurse_fxRow") === -1 && modelSerialized.indexOf("TPurse_editButton") !== -1
@@ -541,6 +570,17 @@ check("daily rows show amount + tokens", dailySerialized.indexOf("¥1.00") !== -
 check("panel renders the 30-day sparkline", dailySerialized.indexOf("spark.summary") !== -1 && dailySerialized.indexOf("TPurse_sparkLine") !== -1 && dailySerialized.indexOf("spark.aria") !== -1);
 check("sparkline path is drawn", /"d":"M[0-9.]+ [0-9.]+ L/.test(dailySerialized) && dailySerialized.indexOf("TPurse_sparkArea") !== -1);
 check("sparkline carries a normalized path length", dailySerialized.indexOf('"pathLength":"1"') !== -1 && dailySerialized.indexOf("non-scaling-stroke") !== -1);
+
+/* 累计口径：同一份每日库并起来，顶部合计与三个分解都跟着换。 */
+react.reset();
+react.seed({ 1: true, 2: "model", 13: "all" });
+const allTimeSerialized = JSON.stringify(dailyInternals.TokenPurseView({ usage, selection, t }));
+check(
+  "all-time scope shows the accumulated total",
+  allTimeSerialized.indexOf("≈¥3.00") !== -1 && allTimeSerialized.indexOf("scope.all") !== -1 && /scope.summary|/.test(allTimeSerialized)
+);
+check("all-time scope drops the session-only source chip", allTimeSerialized.indexOf("rate.source.") === -1);
+check("session scope still shows the session total", dailySerialized.indexOf("≈¥3.02") !== -1 && dailySerialized.indexOf("rate.source.") !== -1);
 check("day detail stays collapsed by default", dailySerialized.indexOf("TPurse_breakSub") === -1 && dailySerialized.indexOf("peak.group.high") === -1);
 
 /* 有高峰用量的那天才可展开，展开后给出峰/谷明细。 */

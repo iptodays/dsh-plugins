@@ -29,13 +29,29 @@ three at once made the popover very tall, so they are **segmented tabs — only 
 rendered at a time**. From top to bottom:
 
 1. the **total**, current model, and rate source;
-2. **token buckets** (input / cache read / output + total);
-3. the **current bracket** (peak / off-peak, with window and multiplier);
-4. the **segmented tabs** and the active tab's content;
-5. the disclaimer, then **Edit rates**.
+2. the **scope**: Session / All time;
+3. **token buckets** (input / cache read / output + total);
+4. the **current bracket** (peak / off-peak, with window and multiplier);
+5. the **segmented tabs** and the active tab's content;
+6. the disclaimer, then **Edit rates**.
+
+### Scope: Session / All time
+
+- **Session** (default) reads the current session's incremental ledger — the same
+  figure as the badge under the composer.
+- **All time** folds together the **daily store** (90 days, across every session) and
+  reports the total, the four token buckets, the per-model and per-bracket sums, and
+  labels the model line with how many **days / sessions / models** it covers.
+
+All time needs **no new storage**: the daily store already is a global ledger, keyed by
+day × session × model × bracket with all four buckets. The accumulated amounts are
+recomputed from that same data, so the two scopes cannot disagree — within the All time
+scope the parts always add up to the total at the top.
+
+The **Daily** tab has always spanned sessions, so the scope does not affect it.
 
 Currency and FX are settings, so they live inside **Edit rates**; a day's per-model
-detail needs a click on that day. A typical panel is about 240–290px tall.
+detail needs a click on that day. A typical panel is about 260–310px tall.
 
 ### Motion
 
@@ -344,6 +360,10 @@ otherwise refresh the page.
 
 ## Changelog
 
+- **0.1.11**: a **scope switch** (**Session / All time**). All time folds the daily store
+  (90 days, every session) into the total, the token buckets, and the per-model and
+  per-bracket breakdowns, labelled with the days / sessions / models it covers. No new
+  storage is involved and the parts always sum to the total.
 - **0.1.10**: **Motion.** Panel fade-in/exit (cancellable mid-exit), tab-body fade,
   growing share bars, a drawn sparkline, a fading day detail, button and chevron
   transitions — all plain CSS and `prefers-reduced-motion` aware. Docs gained the

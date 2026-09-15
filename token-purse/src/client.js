@@ -1081,9 +1081,13 @@ function dailyStats(store, config) {
       o: { tokens: 0, amount: 0 },
       f: { tokens: 0, amount: 0 }
     };
+    const buckets = zeroBuckets();
+    const bucketAmounts = zeroBuckets();
+    const sessionIds = new Set();
     let amount = 0;
     let tokens = 0;
     for (const row of store.days[day]) {
+      sessionIds.add(typeof row.s === "string" ? row.s : "\u0000unknown");
       const flag = normalizePeakFlag(row.k);
       const rates = resolveRates(config, row.m, row.p);
       const factor = flag === "p" && rates.peakMultiplier > 1 ? rates.peakMultiplier : 1;
@@ -1109,17 +1113,69 @@ function dailyStats(store, config) {
         amount += value;
         entry.amount += value;
         groups[flag].amount += value;
+        bucketAmounts[bucket] += value;
         tokens += row.b[bucket];
         entry.tokens += row.b[bucket];
         groups[flag].tokens += row.b[bucket];
+        buckets[bucket] += row.b[bucket];
       }
     }
     const models = Array.from(byModel.values());
     models.sort((left, right) => right.amount - left.amount);
-    days.push({ day, amount, tokens, models, groups });
+    days.push({ day, amount, tokens, models, groups, buckets, bucketAmounts, sessionIds: Array.from(sessionIds) });
   }
   days.sort((left, right) => (left.day < right.day ? 1 : left.day > right.day ? -1 : 0));
   return days;
+}
+
+/** 把逐日统计并成一份累计口径：总额、四个桶、按模型、按峰谷、天数与会话数。 */
+function aggregateDaily(days) {
+  const models = new Map();
+  const groups = {
+    peak: { key: "peak", label: "peak.group.high", tokens: 0, amount: 0 },
+    off: { key: "off", label: "peak.group.low", tokens: 0, amount: 0 },
+    flat: { key: "flat", label: "peak.group.flat", tokens: 0, amount: 0 }
+  };
+  const flagOf = { p: "peak", o: "off", f: "flat" };
+  const buckets = zeroBuckets();
+  const bucketAmounts = zeroBuckets();
+  const sessions = new Set();
+  let amount = 0;
+  let tokens = 0;
+  for (const day of days) {
+    amount += day.amount;
+    tokens += day.tokens;
+    for (const id of day.sessionIds) sessions.add(id);
+    for (const bucket of BUCKETS) {
+      buckets[bucket] += day.buckets[bucket];
+      bucketAmounts[bucket] += day.bucketAmounts[bucket];
+    }
+    for (const model of day.models) {
+      let entry = models.get(model.key);
+      if (entry === undefined) {
+        entry = { key: model.key, provider: model.provider, model: model.model, label: model.label, tokens: 0, amount: 0 };
+        models.set(model.key, entry);
+      }
+      entry.tokens += model.tokens;
+      entry.amount += model.amount;
+    }
+    for (const flag of ["p", "o", "f"]) {
+      const target = groups[flagOf[flag]];
+      target.tokens += day.groups[flag].tokens;
+      target.amount += day.groups[flag].amount;
+    }
+  }
+  const modelRows = Array.from(models.values());
+  modelRows.sort((left, right) => right.amount - left.amount);
+  const peakRows = [groups.off, groups.peak, groups.flat].filter((row) => row.tokens > 0);
+  peakRows.sort((left, right) => right.amount - left.amount);
+  const rows = BUCKET_DEFINITIONS.filter((definition) => buckets[definition.key] > 0).map((definition) => ({
+    key: definition.key,
+    label: definition.label,
+    tokens: buckets[definition.key],
+    amount: bucketAmounts[definition.key]
+  }));
+  return { amount, tokens, rows, models: modelRows, peakRows, groups, days: days.length, sessions: sessions.size };
 }
 
 const SPARK_DAYS = 30;
@@ -1127,6 +1183,12 @@ const SPARK_VIEW_W = 100;
 const SPARK_VIEW_H = 30;
 const SPARK_PAD = 2;
 const PANEL_EXIT_MS = 130;
+
+/* 统计范围：当前会话的增量账本，或每日库并起来的累计口径。 */
+const SCOPES = [
+  { key: "session", label: "scope.session" },
+  { key: "all", label: "scope.all" }
+];
 
 /* 三种分解方式，同一时间只展开一个。 */
 const TABS = [
@@ -1234,6 +1296,7 @@ function TokenPurseView({ usage, selection, t, sessionId }) {
   const [daily, setDaily] = useState(readDaily);
   const [tick, setTick] = useState(0);
   const [closing, setClosing] = useState(false);
+  const [scope, setScope] = useState(SCOPES[0].key);
   const rootRef = useRef(null);
   const closeTimer = useRef(null);
 
@@ -1315,12 +1378,23 @@ function TokenPurseView({ usage, selection, t, sessionId }) {
   const sparkSeries = dailySeries(dailyRows, SPARK_DAYS, Date.now());
   const spark = sparklinePoints(sparkSeries, SPARK_VIEW_W, SPARK_VIEW_H, SPARK_PAD);
   const sparkAvg = sparkSeries.reduce((sum, point) => sum + point.amount, 0) / SPARK_DAYS;
+  const allTime = aggregateDaily(dailyRows);
 
   if (rated === null) return null;
 
   const symbol = config.currency.symbol;
   const amountText = formatMoney(rated.amount, symbol);
   const modelText = rated.modelLabel === null ? t("panel.defaultModel") : rated.modelLabel;
+
+  /* 范围切换：本会话取增量账本，累计取每日库的合并结果。 */
+  const isAll = scope === "all";
+  const scopeRows = isAll ? allTime.rows : rated.rows;
+  const scopeTotal = isAll ? allTime.amount : rated.amount;
+  const scopeTokens = isAll ? allTime.tokens : rated.tokens;
+  const scopeModelRows = isAll ? allTime.models : modelRows;
+  const scopePeakRows = isAll ? allTime.peakRows : peakRows;
+  const scopeAmountText = formatMoney(scopeTotal, symbol);
+  const allTimeText = t("scope.summary", { days: allTime.days, sessions: allTime.sessions, models: allTime.models.length });
 
   const beginEdit = () => {
     setDraft(JSON.stringify(config, null, 2));
@@ -1453,28 +1527,48 @@ function TokenPurseView({ usage, selection, t, sessionId }) {
             "div",
             { className: CSS.head },
             h("span", { className: CSS.title }, t("panel.title")),
-            h("span", { className: CSS.total }, "≈" + amountText)
+            h("span", { className: CSS.total }, "≈" + scopeAmountText)
           ),
           h(
             "div",
             { className: CSS.modelLine },
-            h("span", null, t("panel.model")),
-            h(
-              "span",
-              {
-                className:
-                  CSS.sourceChip +
-                  (rated.source === "provider" ? " " + CSS.sourceChipExact : rated.source === "fallback" ? " " + CSS.sourceChipMiss : ""),
-                title: t("rate.source." + rated.source)
-              },
-              t("rate.source." + rated.source)
-            ),
-            h("span", { className: CSS.modelValue, title: modelText }, modelText)
+            h("span", null, t(isAll ? "scope.all" : "panel.model")),
+            isAll
+              ? null
+              : h(
+                  "span",
+                  {
+                    className:
+                      CSS.sourceChip +
+                      (rated.source === "provider" ? " " + CSS.sourceChipExact : rated.source === "fallback" ? " " + CSS.sourceChipMiss : ""),
+                    title: t("rate.source." + rated.source)
+                  },
+                  t("rate.source." + rated.source)
+                ),
+            h("span", { className: CSS.modelValue, title: isAll ? allTimeText : modelText }, isAll ? allTimeText : modelText)
+          ),
+          h(
+            "div",
+            { className: CSS.tabs, role: "tablist", "aria-label": t("scope.label") },
+            SCOPES.map((item) =>
+              h(
+                "button",
+                {
+                  key: item.key,
+                  type: "button",
+                  role: "tab",
+                  "aria-selected": scope === item.key,
+                  className: scope === item.key ? CSS.tab + " " + CSS.tabOn : CSS.tab,
+                  onClick: () => setScope(item.key)
+                },
+                t(item.label)
+              )
+            )
           ),
           h(
             "dl",
             { className: CSS.rows },
-            rated.rows.map((row) =>
+            scopeRows.map((row) =>
               h(
                 "div",
                 { className: CSS.row, key: row.key },
@@ -1491,9 +1585,10 @@ function TokenPurseView({ usage, selection, t, sessionId }) {
               "div",
               { className: CSS.row + " " + CSS.rowTotal },
               h("dt", null, t("panel.totalTokens")),
-              h("dd", null, h("span", { className: CSS.tokens }, formatTokens(rated.tokens)))
+              h("dd", null, h("span", { className: CSS.tokens }, formatTokens(scopeTokens)))
             )
           ),
+          isAll && allTime.days === 0 ? h("div", { className: CSS.note }, t("scope.empty")) : null,
           rated.peak === null || rated.peak === undefined
             ? null
             : h(
@@ -1529,9 +1624,9 @@ function TokenPurseView({ usage, selection, t, sessionId }) {
             "div",
             { className: CSS.section + " " + CSS.sectionFlat + " " + CSS.tabBody, key: tab, title: t(activeTab.hint) },
             tab === "model"
-              ? modelRows.length < 2
+              ? scopeModelRows.length < 2
                 ? h("div", { className: CSS.breakRow }, h("span", { className: CSS.peakLine }, t("breakdown.singleModel")))
-                : modelRows.map((row) =>
+                : scopeModelRows.map((row) =>
                     h(
                       "div",
                       { className: CSS.breakItem, key: row.key },
@@ -1545,14 +1640,14 @@ function TokenPurseView({ usage, selection, t, sessionId }) {
                       h(
                         "span",
                         { className: CSS.share },
-                        h("span", { className: CSS.shareFill, style: { width: sharePercent(row.amount, rated.amount) + "%" } })
+                        h("span", { className: CSS.shareFill, style: { width: sharePercent(row.amount, scopeTotal) + "%" } })
                       )
                     )
                   )
               : tab === "peak"
-                ? peakRows.length === 0
+                ? scopePeakRows.length === 0
                   ? h("div", { className: CSS.breakRow }, h("span", { className: CSS.peakLine }, t("peak.splitNone")))
-                  : peakRows.map((row) =>
+                  : scopePeakRows.map((row) =>
                       h(
                         "div",
                         { className: CSS.breakItem, key: row.key },
@@ -1566,7 +1661,7 @@ function TokenPurseView({ usage, selection, t, sessionId }) {
                         h(
                           "span",
                           { className: CSS.share },
-                          h("span", { className: CSS.shareFill, style: { width: sharePercent(row.amount, rated.amount) + "%" } })
+                          h("span", { className: CSS.shareFill, style: { width: sharePercent(row.amount, scopeTotal) + "%" } })
                         )
                       )
                     )
@@ -1819,7 +1914,12 @@ const zh = {
   "peak.modeLow": "当前处于低峰（空闲）时段",
   "breakdown.unknown": "未知模型",
   "breakdown.byModelHint": "本会话各 provider / 模型的用量与花费",
-  "daily.hint": "按观察时刻归入当天，保留最近 90 天",
+  "daily.hint": "按观察时刻归入当天（跨全部会话），保留最近 90 天",
+  "scope.session": "本会话",
+  "scope.all": "累计",
+  "scope.label": "统计范围",
+  "scope.summary": "{days} 天 · {sessions} 个会话 · {models} 个模型",
+  "scope.empty": "还没有累计记录，用几个会话后这里会有数据。",
   "tab.model": "模型",
   "tab.peak": "峰谷",
   "tab.daily": "每日",
@@ -1874,7 +1974,12 @@ const en = {
   "peak.modeLow": "Currently off-peak (idle) hours",
   "breakdown.unknown": "Unknown model",
   "breakdown.byModelHint": "Tokens and spend per provider / model in this session",
-  "daily.hint": "Bucketed by observation time, last 90 days kept",
+  "daily.hint": "Bucketed by observation time across all sessions, last 90 days kept",
+  "scope.session": "Session",
+  "scope.all": "All time",
+  "scope.label": "Scope",
+  "scope.summary": "{days} days · {sessions} sessions · {models} models",
+  "scope.empty": "No accumulated records yet — this fills in after a few sessions.",
   "tab.model": "Models",
   "tab.peak": "Peak",
   "tab.daily": "Daily",
