@@ -165,8 +165,8 @@ window.__ModuleLoader__.load({
 		  ".TPurse_amount{font-weight:500;color:var(--dsw-alias-label-secondary)}" +
 		  ".TPurse_chevron{font-size:9px;opacity:.6;transition:transform .16s cubic-bezier(.22,1,.36,1)}" +
 		  ".TPurse_chevronOpen{transform:rotate(180deg)}" +
-		  ".TPurse_panel{position:absolute;bottom:calc(100% + 8px);top:auto;right:0;z-index:100;box-sizing:border-box;width:min(320px,calc(100vw - 32px));padding:12px;border:0;border-radius:12px;background:var(--dsw-specific-menu);box-shadow:var(--dsw-elevation-prominent);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:20px;cursor:default;transform-origin:bottom right;animation:tp-panel-in .18s cubic-bezier(.22,1,.36,1) both}" +
-		  ".TPurse_head{display:flex;align-items:baseline;gap:8px}" +
+		  ".TPurse_panel{position:absolute;bottom:calc(100% + 8px);top:auto;right:0;z-index:100;box-sizing:border-box;width:min(320px,calc(100vw - 32px));max-height:min(72vh,600px);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;padding:12px;border:0;border-radius:12px;background:var(--dsw-specific-menu);box-shadow:var(--dsw-elevation-prominent);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:20px;cursor:default;transform-origin:bottom right;animation:tp-panel-in .18s cubic-bezier(.22,1,.36,1) both}" +
+		  ".TPurse_head{display:flex;align-items:baseline;gap:8px;position:sticky;top:0;z-index:2;padding-bottom:4px;background:var(--dsw-specific-menu)}" +
 		  ".TPurse_title{color:var(--dsw-alias-label-secondary)}" +
 		  ".TPurse_total{margin-left:auto;color:var(--dsw-alias-label-primary);font-weight:600;font-variant-numeric:tabular-nums}" +
 		  ".TPurse_modelLine{display:flex;align-items:baseline;gap:8px;margin-top:2px;color:var(--dsw-alias-label-secondary)}" +
@@ -228,7 +228,7 @@ window.__ModuleLoader__.load({
 		  ".TPurse_toneSeg{flex-basis:0;min-width:2px}" +
 		  ".TPurse_toneOverlay{position:absolute;left:0;right:0;top:-4px;height:14px}" +
 		  ".TPurse_toneCell{position:absolute;top:0;bottom:0;cursor:default}" +
-		  ".TPurse_toneTip{position:absolute;bottom:calc(100% + 6px);transform:translateX(-50%);padding:1px 6px;border-radius:6px;background:var(--dsw-specific-menu);box-shadow:var(--dsw-elevation-prominent);color:var(--dsw-alias-label-primary);font-size:10px;line-height:15px;white-space:nowrap;pointer-events:none;font-variant-numeric:tabular-nums;z-index:1;animation:tp-fade .12s ease-out both}" +
+		  ".TPurse_toneTip{position:absolute;bottom:calc(100% + 6px);left:0;right:0;display:flex;justify-content:center;pointer-events:none;z-index:2}.TPurse_toneTipText{padding:1px 6px;border-radius:6px;background:var(--dsw-specific-menu);box-shadow:var(--dsw-elevation-prominent);color:var(--dsw-alias-label-primary);font-size:10px;line-height:15px;max-width:100%;text-align:center;white-space:normal;overflow-wrap:anywhere;font-variant-numeric:tabular-nums;animation:tp-fade .12s ease-out both}" +
 		  ".TPurse_toneDot{flex:none;align-self:center;width:7px;height:7px;border-radius:2px}" +
 		  ".TPurse_toneHead{margin-top:1px}" +
 		  ".TPurse_share{display:block;height:3px;margin:3px 0 0;border-radius:2px;background:var(--dsw-alias-interactive-bg-hover);overflow:hidden}" +
@@ -247,7 +247,7 @@ window.__ModuleLoader__.load({
 		  ".TPurse_tab{flex:1 1 0;min-width:0;padding:3px 6px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px;font-family:inherit;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background-color .14s ease,color .14s ease}" +
 		  ".TPurse_tabOn{background:var(--dsw-alias-button-ghost-active-fill);color:var(--dsw-alias-label-primary);font-weight:500}" +
 		  ".TPurse_sectionFlat{margin-top:8px;padding-top:0;border-top:0}" +
-		  ".TPurse_dayRow{width:100%;padding:0;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer;transition:color .12s ease}" +
+		  ".TPurse_dayRow{width:100%;padding:4px 0;margin:-4px 0;border:0;border-radius:5px;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer;transition:background-color .14s ease}.TPurse_dayRow:hover,.TPurse_dayRow:focus-visible{background:var(--dsw-alias-interactive-bg-hover)}" +
 		  ".TPurse_peakLine{flex:1 1 auto;min-width:0;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}" +
 		  ".TPurse_warnNote{margin-top:6px;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px;word-break:break-word}" +
 		  ".TPurse_sourceChip{flex:none;padding:0 6px;border-radius:999px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);font-size:10px;line-height:15px}" +
@@ -261,7 +261,7 @@ window.__ModuleLoader__.load({
 		  "@keyframes tp-grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}" +
 		  "@keyframes tp-fade{from{opacity:0}to{opacity:1}}" +
 		  "@keyframes tp-draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}" +
-		  "@media (prefers-reduced-motion:reduce){.TPurse_panel,.TPurse_panelOut,.TPurse_tabBody,.TPurse_breakSub,.TPurse_sparkLine,.TPurse_sparkArea,.TPurse_sparkTip,.TPurse_shareFill{animation:none!important}}";
+		  "@media (prefers-reduced-motion:reduce){.TPurse_panel,.TPurse_panel *,.TPurse_trigger,.TPurse_trigger *,.TPurse_panelOut,.TPurse_tabBody,.TPurse_breakSub,.TPurse_sparkLine,.TPurse_sparkArea,.TPurse_sparkTip,.TPurse_shareFill,.TPurse_toneTipText{animation:none!important;transition:none!important}}";
 
 		const CSS = {
 		  root: "TPurse_root",
@@ -320,6 +320,7 @@ window.__ModuleLoader__.load({
 		  toneOverlay: "TPurse_toneOverlay",
 		  toneCell: "TPurse_toneCell",
 		  toneTip: "TPurse_toneTip",
+		  toneTipText: "TPurse_toneTipText",
 		  toneSeg: "TPurse_toneSeg",
 		  toneDot: "TPurse_toneDot",
 		  toneHead: "TPurse_toneHead",
@@ -1597,13 +1598,17 @@ window.__ModuleLoader__.load({
 		        ? null
 		        : h(
 		            "span",
-		            { className: CSS.toneTip, style: { left: "clamp(14%, " + hovered.center + "%, 86%)" } },
-		            t("daily.toneTip", {
-		              label: sessionLabel(hovered.key),
-		              amount: formatMoney(hovered.amount, symbol),
-		              tokens: formatTokens(hovered.tokens),
-		              share: String(Math.round(hovered.share))
-		            })
+		            { className: CSS.toneTip },
+		            h(
+		              "span",
+		              { className: CSS.toneTipText },
+		              t("daily.toneTip", {
+		                label: sessionLabel(hovered.key),
+		                amount: formatMoney(hovered.amount, symbol),
+		                tokens: formatTokens(hovered.tokens),
+		                share: String(Math.round(hovered.share))
+		              })
+		            )
 		          )
 		    );
 		  };
@@ -2000,7 +2005,7 @@ window.__ModuleLoader__.load({
 		                                ? null
 		                                : h(
 		                                    "span",
-		                                    { className: CSS.sparkTip, style: { left: "clamp(14%, " + sparkPoint.x + "%, 86%)" } },
+		                                    { className: CSS.sparkTip, style: { left: "clamp(16%, " + sparkPoint.x + "%, 84%)" } },
 		                                    t("spark.tip", { day: formatDayKey(sparkPoint.day), amount: formatMoney(sparkPoint.amount, symbol) })
 		                                  )
 		                            ),

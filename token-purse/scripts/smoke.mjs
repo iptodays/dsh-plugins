@@ -565,6 +565,20 @@ check(
   )
 );
 check("animations respect reduced motion", cssSource.indexOf("prefers-reduced-motion:reduce") !== -1);
+/* 评审里点出过：媒体查询只关了 animation，7 个 transition 还在（其中 chevron 180° 是真动画）。 */
+const reducedMotion = cssSource.slice(cssSource.indexOf("prefers-reduced-motion:reduce"));
+check(
+  "reduced motion also kills transitions (chevron rotate)",
+  reducedMotion.indexOf("transition:none!important") !== -1 && reducedMotion.indexOf(".TPurse_trigger *") !== -1
+);
+/* 没有纵向上限时，底部锚定的面板会一直向上长，标题与首行会跑到屏幕外不可达。 */
+check(
+  "panel caps its height and scrolls instead of growing without bound",
+  cssSource.indexOf("max-height:min(72vh,600px)") !== -1 &&
+    cssSource.indexOf("overflow-y:auto") !== -1 &&
+    cssSource.indexOf("overscroll-behavior:contain") !== -1 &&
+    cssSource.indexOf(".TPurse_head{display:flex;align-items:baseline;gap:8px;position:sticky") !== -1
+);
 
 /* ── 3a. 主题 token 护栏 ─────────────────────────────────────────────── */
 /*
@@ -832,7 +846,10 @@ const toneWidths = toneSerialized
 check(
   "hovering a colour block names the session and its share of the day",
   countOf(toneSerialized, "TPurse_toneCell") === 3 &&
-    countOf(toneSerialized, "TPurse_toneTip") === 1 &&
+    countOf(toneSerialized, '"className":"TPurse_toneTip"') === 1 &&
+    countOf(toneSerialized, "TPurse_toneTipText") === 1 &&
+    /* 气泡改成整行居中 + 换行，不再用 clamp 定 left，所以不会横向顶出面板。 */
+    (toneSerialized.split('"className":"TPurse_toneTip"')[1] || "").slice(0, 60).indexOf("left") === -1 &&
     /daily\.toneTip\|.*?\\"share\\":\\"51\\"/.test(toneSerialized) &&
     toneSerialized.indexOf("会话乙") !== -1 &&
     toneWidths.length === 3 &&
