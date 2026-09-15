@@ -470,14 +470,37 @@ const modelInternals = loadInternals(react, undefined, (sandbox) => {
   sandbox.window.localStorage.getItem = (key) => (key === "dsh.token-purse.ledger.v1:default" ? JSON.stringify(LEDGER_SEED) : null);
 });
 react.reset();
-react.seed({ 1: true });
+react.seed({ 1: true, 2: "model" });
 const modelSerialized = JSON.stringify(modelInternals.TokenPurseView({ usage, selection, t }));
-check("panel renders by-model breakdown", modelSerialized.indexOf("breakdown.byModel") !== -1 && modelSerialized.indexOf("packyapi / deepseek-v4-pro") !== -1);
+check("panel renders by-model breakdown", modelSerialized.indexOf("packyapi / deepseek-v4-pro") !== -1 && modelSerialized.indexOf("TPurse_breakLabel") !== -1);
 check("by-model rows carry a share bar", modelSerialized.indexOf("TPurse_shareFill") !== -1 && modelSerialized.indexOf("TPurse_breakAmount") !== -1);
+check("panel renders three tabs", (modelSerialized.match(/"role":"tab"/g) || []).length === 3 && modelSerialized.indexOf("TPurse_tabOn") !== -1);
 check(
-  "panel renders the peak / off-peak split",
-  modelSerialized.indexOf("peak.splitTitle") !== -1 && modelSerialized.indexOf("peak.group.low") !== -1 && modelSerialized.indexOf("peak.group.high") === -1
+  "settings stay behind the editor",
+  modelSerialized.indexOf("TPurse_select") === -1 && modelSerialized.indexOf("TPurse_fxRow") === -1 && modelSerialized.indexOf("TPurse_editButton") !== -1
 );
+
+react.reset();
+react.seed({ 1: true, 2: "model", 4: true });
+const editingSerialized = JSON.stringify(modelInternals.TokenPurseView({ usage, selection, t }));
+check(
+  "editor holds the currency settings",
+  editingSerialized.indexOf("TPurse_select") !== -1 && editingSerialized.indexOf("TPurse_fxRow") !== -1 && editingSerialized.indexOf("TPurse_textarea") !== -1
+);
+
+check(
+  "model tab hides the other breakdowns",
+  modelSerialized.indexOf("TPurse_sparkWrap") === -1 && modelSerialized.indexOf("peak.group.low") === -1 && (modelSerialized.match(/TPurse_sectionFlat/g) || []).length === 1
+);
+
+react.reset();
+react.seed({ 1: true, 2: "peak" });
+const peakTabSerialized = JSON.stringify(modelInternals.TokenPurseView({ usage, selection, t }));
+check(
+  "peak tab renders the peak / off-peak split",
+  peakTabSerialized.indexOf("peak.group.low") !== -1 && peakTabSerialized.indexOf("peak.group.high") === -1 && peakTabSerialized.indexOf("TPurse_sparkWrap") === -1
+);
+check("peak tab keeps the total", peakTabSerialized.indexOf("¥3.52") !== -1 && peakTabSerialized.indexOf("packyapi / deepseek-v4-pro") === -1);
 
 const legacyCurrencyInternals = loadInternals(react, undefined, (sandbox) => {
   sandbox.window.localStorage.getItem = (key) => (key === "dsh.token-purse.config.v2" ? JSON.stringify({ currency: { symbol: "$", perUsd: 1, auto: false }, models: {} }) : null);
@@ -492,12 +515,37 @@ const dailyInternals = loadInternals(react, undefined, (sandbox) => {
   sandbox.window.localStorage.getItem = (key) => (key === "dsh.token-purse.daily.v1" ? JSON.stringify(DAILY_SEED) : null);
 });
 react.reset();
-react.seed({ 1: true });
+react.seed({ 1: true, 2: "daily" });
 const dailySerialized = JSON.stringify(dailyInternals.TokenPurseView({ usage, selection, t }));
-check("panel renders daily rows", dailySerialized.indexOf("daily.title") !== -1 && dailySerialized.indexOf("01-06") !== -1 && dailySerialized.indexOf("01-05") !== -1);
+check("panel renders daily rows", dailySerialized.indexOf("01-06") !== -1 && dailySerialized.indexOf("01-05") !== -1 && dailySerialized.indexOf("TPurse_sparkWrap") !== -1);
 check("daily rows show amount + tokens", dailySerialized.indexOf("¥1.00") !== -1 && dailySerialized.indexOf("¥2.00") !== -1 && dailySerialized.indexOf("2M") !== -1);
 check("panel renders the 30-day sparkline", dailySerialized.indexOf("spark.summary") !== -1 && dailySerialized.indexOf("TPurse_sparkLine") !== -1 && dailySerialized.indexOf("spark.aria") !== -1);
 check("sparkline path is drawn", /"d":"M[0-9.]+ [0-9.]+ L/.test(dailySerialized) && dailySerialized.indexOf("TPurse_sparkArea") !== -1);
+check("day detail stays collapsed by default", dailySerialized.indexOf("TPurse_breakSub") === -1 && dailySerialized.indexOf("peak.group.high") === -1);
+
+/* 有高峰用量的那天才可展开，展开后给出峰/谷明细。 */
+const PEAK_DAILY_SEED = {
+  v: 1,
+  days: {
+    "2025-01-06": [
+      { s: "s0", p: "deepseek-official", m: "deepseek-flash", k: "p", b: { uncachedInputTokens: 1000000, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 } },
+      { s: "s0", p: "deepseek-official", m: "deepseek-flash", k: "o", b: { uncachedInputTokens: 1000000, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 } }
+    ]
+  }
+};
+const peakDayInternals = loadInternals(react, undefined, (sandbox) => {
+  sandbox.window.localStorage.getItem = (key) => (key === "dsh.token-purse.daily.v1" ? JSON.stringify(PEAK_DAILY_SEED) : null);
+});
+react.reset();
+react.seed({ 1: true, 2: "daily", 3: "2025-01-06" });
+const expandedSerialized = JSON.stringify(peakDayInternals.TokenPurseView({ usage: { uncachedInputTokens: 2000000, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 }, selection, t }));
+check(
+  "expanded day shows the peak / off-peak line",
+  expandedSerialized.indexOf("TPurse_breakSub") !== -1 &&
+    expandedSerialized.indexOf("peak.group.high") !== -1 &&
+    expandedSerialized.indexOf("¥2.00") !== -1 &&
+    expandedSerialized.indexOf("¥1.00") !== -1
+);
 
 react.reset();
 react.seed({ 1: true });

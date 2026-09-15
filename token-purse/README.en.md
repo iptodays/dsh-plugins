@@ -17,10 +17,25 @@ output), their token counts and subtotals, plus an inline rate editor.
 - Idle: a compact **≈$0.0123** badge; the **≈** marks it as an estimate.
 - Click: a dropdown listing each bucket, the priced model, the total token count
   and a short disclaimer.
-- Bottom of the panel: **Edit rates** — override the default rates and currency
-  as JSON, stored in the browser's localStorage.
+- Bottom of the panel: **Edit rates** — expands into both the JSON rate override and
+  the currency / FX settings, stored in the browser's localStorage.
 - Nothing renders until the session has billed at least one token, so an empty
   session stays clean.
+
+### Panel layout
+
+The same total can be broken down three ways (**Models / Peak / Daily**). Showing all
+three at once made the popover very tall, so they are **segmented tabs — only one is
+rendered at a time**. From top to bottom:
+
+1. the **total**, current model, and rate source;
+2. **token buckets** (input / cache read / output + total);
+3. the **current bracket** (peak / off-peak, with window and multiplier);
+4. the **segmented tabs** and the active tab's content;
+5. the disclaimer, then **Edit rates**.
+
+Currency and FX are settings, so they live inside **Edit rates**; a day's per-model
+detail needs a click on that day. A typical panel is about 240–290px tall.
 
 ## How it works
 
@@ -229,7 +244,7 @@ a share bar:
 
 ## Currency
 
-The lower half of the popover has **Currency** and **Rate** rows:
+Open the badge → **Edit rates**; the lower half of the editor has **Currency** and **Rate** rows:
 
 - Pick a common currency (USD / CNY / EUR / GBP / JPY / HKD / TWD / KRW / SGD /
   INR) from the dropdown — it carries an example rate;
@@ -292,6 +307,10 @@ otherwise refresh the page.
 
 ## Changelog
 
+- **0.1.9**: **Slimmed the panel.** The three breakdowns (Models / Peak / Daily) became
+  segmented tabs with only one rendered at a time; a day's per-model detail now expands
+  on click; currency and FX moved inside **Edit rates**. Nodes went 197 → 49–81 and the
+  height about 1000px → 240–290px.
 - **0.1.8**: a **Peak / off-peak** section (three groups with share bars) and a peak/off-peak
   line for days that had peak usage. The bracket flag is now three-state with a legacy
   fallback.

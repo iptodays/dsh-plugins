@@ -223,6 +223,11 @@ const CSS_TEXT =
   ".TPurse_sparkLine{fill:none;stroke:var(--dsw-alias-label-secondary);stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round}" +
   ".TPurse_sparkArea{fill:var(--dsw-alias-fill-l2);stroke:none}" +
   ".TPurse_sparkNote{display:block;margin-top:2px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:15px;font-variant-numeric:tabular-nums}" +
+  ".TPurse_tabs{display:flex;gap:2px;margin-top:10px;padding:2px;border-radius:8px;background:var(--dsw-alias-fill-l2)}" +
+  ".TPurse_tab{flex:1 1 0;min-width:0;padding:3px 6px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;font-family:inherit;cursor:pointer}" +
+  ".TPurse_tabOn{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);font-weight:500}" +
+  ".TPurse_sectionFlat{margin-top:8px;padding-top:0;border-top:0}" +
+  ".TPurse_dayRow{width:100%;padding:0;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer}" +
   ".TPurse_peakLine{flex:1 1 auto;min-width:0;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}" +
   ".TPurse_warnNote{margin-top:6px;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px;word-break:break-word}" +
   ".TPurse_sourceChip{flex:none;padding:0 6px;border-radius:999px;background:var(--dsw-alias-fill-l2,transparent);color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:15px}" +
@@ -284,6 +289,11 @@ const CSS = {
   share: "TPurse_share",
   shareFill: "TPurse_shareFill",
   peakLine: "TPurse_peakLine",
+  tabs: "TPurse_tabs",
+  tab: "TPurse_tab",
+  tabOn: "TPurse_tabOn",
+  sectionFlat: "TPurse_sectionFlat",
+  dayRow: "TPurse_dayRow",
   sparkWrap: "TPurse_sparkWrap",
   spark: "TPurse_spark",
   sparkLine: "TPurse_sparkLine",
@@ -1106,6 +1116,13 @@ const SPARK_VIEW_W = 100;
 const SPARK_VIEW_H = 30;
 const SPARK_PAD = 2;
 
+/* 三种分解方式，同一时间只展开一个。 */
+const TABS = [
+  { key: "model", label: "tab.model", hint: "breakdown.byModelHint" },
+  { key: "peak", label: "tab.peak", hint: "peak.splitHint" },
+  { key: "daily", label: "tab.daily", hint: "daily.hint" }
+];
+
 /** 把稀疏的每日数据铺成连续的 count 天（缺的补 0），从旧到新。 */
 function dailySeries(rows, count, now) {
   const byDay = new Map();
@@ -1194,6 +1211,8 @@ function formatRate(value) {
 function TokenPurseView({ usage, selection, t, sessionId }) {
   const [config, setConfig] = useState(readConfig);
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState(TABS[0].key);
+  const [openDay, setOpenDay] = useState(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [invalid, setInvalid] = useState(false);
@@ -1262,6 +1281,7 @@ function TokenPurseView({ usage, selection, t, sessionId }) {
   );
   const dailyRows = dailyStats(daily, config);
   const modelRows = sessionModelRows(ledger, usage, selection, config, Date.now());
+  const activeTab = TABS.find((item) => item.key === tab) || TABS[0];
   const peakRows = splitByPeak(ledger, usage, selection, config, Date.now());
   const sparkSeries = dailySeries(dailyRows, SPARK_DAYS, Date.now());
   const spark = sparklinePoints(sparkSeries, SPARK_VIEW_W, SPARK_VIEW_H, SPARK_PAD);
@@ -1451,202 +1471,221 @@ function TokenPurseView({ usage, selection, t, sessionId }) {
                 ),
                 h("span", { className: CSS.peakText }, t("peak.note", { windows: rated.peak.windows.join(" / "), timezone: rated.peak.timezone }))
               ),
-          modelRows.length < 2
-            ? null
-            : h(
-                "div",
-                { className: CSS.section },
-                h("div", { className: CSS.sectionHead, title: t("breakdown.byModelHint") }, t("breakdown.byModel", { count: modelRows.length })),
-                modelRows.map((row) =>
-                  h(
-                    "div",
-                    { className: CSS.breakItem, key: row.key },
-                    h(
-                      "div",
-                      { className: CSS.breakRow },
-                      h("span", { className: CSS.breakLabel, title: row.label === null ? t("breakdown.unknown") : row.label }, row.label === null ? t("breakdown.unknown") : row.label),
-                      h("span", { className: CSS.breakTokens }, formatTokens(row.tokens)),
-                      h("span", { className: CSS.breakAmount }, formatMoney(row.amount, symbol))
-                    ),
-                    h(
-                      "span",
-                      { className: CSS.share },
-                      h("span", { className: CSS.shareFill, style: { width: sharePercent(row.amount, rated.amount) + "%" } })
-                    )
-                  )
-                )
-              ),
-          peakRows.some((row) => row.key !== "flat")
-            ? h(
-                "div",
-                { className: CSS.section },
-                h("div", { className: CSS.sectionHead, title: t("peak.splitHint") }, t("peak.splitTitle")),
-                peakRows.map((row) =>
-                  h(
-                    "div",
-                    { className: CSS.breakItem, key: row.key },
-                    h(
-                      "div",
-                      { className: CSS.breakRow },
-                      h("span", { className: CSS.breakLabel }, t(row.label)),
-                      h("span", { className: CSS.breakTokens }, formatTokens(row.tokens)),
-                      h("span", { className: CSS.breakAmount }, formatMoney(row.amount, symbol))
-                    ),
-                    h(
-                      "span",
-                      { className: CSS.share },
-                      h("span", { className: CSS.shareFill, style: { width: sharePercent(row.amount, rated.amount) + "%" } })
-                    )
-                  )
-                )
+          h(
+            "div",
+            { className: CSS.tabs, role: "tablist" },
+            TABS.map((item) =>
+              h(
+                "button",
+                {
+                  key: item.key,
+                  type: "button",
+                  role: "tab",
+                  "aria-selected": tab === item.key,
+                  className: tab === item.key ? CSS.tab + " " + CSS.tabOn : CSS.tab,
+                  onClick: () => setTab(item.key)
+                },
+                t(item.label)
               )
-            : null,
-          dailyRows.length === 0
-            ? null
-            : h(
-                "div",
-                { className: CSS.section },
-                h("div", { className: CSS.sectionHead, title: t("daily.hint") }, t("daily.title")),
-                spark.max <= 0
-                  ? null
-                  : h(
+            )
+          ),
+          h(
+            "div",
+            { className: CSS.section + " " + CSS.sectionFlat, title: t(activeTab.hint) },
+            tab === "model"
+              ? modelRows.length < 2
+                ? h("div", { className: CSS.breakRow }, h("span", { className: CSS.peakLine }, t("breakdown.singleModel")))
+                : modelRows.map((row) =>
+                    h(
                       "div",
-                      { className: CSS.sparkWrap },
+                      { className: CSS.breakItem, key: row.key },
                       h(
-                        "svg",
-                        {
-                          className: CSS.spark,
-                          viewBox: "0 0 " + SPARK_VIEW_W + " " + SPARK_VIEW_H,
-                          preserveAspectRatio: "none",
-                          role: "img",
-                          "aria-label": t("spark.aria", { days: SPARK_DAYS, max: formatMoney(spark.max, symbol) })
-                        },
-                        h("path", { className: CSS.sparkArea, d: sparklineArea(spark.points, SPARK_VIEW_H, SPARK_PAD) }),
-                        h("path", { className: CSS.sparkLine, d: sparklineLine(spark.points), vectorEffect: "non-scaling-stroke" })
+                        "div",
+                        { className: CSS.breakRow },
+                        h("span", { className: CSS.breakLabel, title: row.label === null ? t("breakdown.unknown") : row.label }, row.label === null ? t("breakdown.unknown") : row.label),
+                        h("span", { className: CSS.breakTokens }, formatTokens(row.tokens)),
+                        h("span", { className: CSS.breakAmount }, formatMoney(row.amount, symbol))
                       ),
                       h(
                         "span",
-                        { className: CSS.sparkNote },
-                        t("spark.summary", { days: SPARK_DAYS, max: formatMoney(spark.max, symbol), avg: formatMoney(sparkAvg, symbol) })
+                        { className: CSS.share },
+                        h("span", { className: CSS.shareFill, style: { width: sharePercent(row.amount, rated.amount) + "%" } })
                       )
-                    ),
-                dailyRows.slice(0, DAILY_VIEW_DAYS).map((day) =>
-                  h(
-                    "div",
-                    { key: day.day },
-                    h(
-                      "div",
-                      { className: CSS.breakRow },
-                      h("span", { className: CSS.breakDay }, formatDayKey(day.day)),
-                      h("span", { className: CSS.breakTokens }, formatTokens(day.tokens)),
-                      h("span", { className: CSS.breakAmount }, formatMoney(day.amount, symbol))
-                    ),
-                    day.groups.p.tokens > 0 || day.groups.f.tokens > 0
-                      ? h(
+                    )
+                  )
+              : tab === "peak"
+                ? peakRows.length === 0
+                  ? h("div", { className: CSS.breakRow }, h("span", { className: CSS.peakLine }, t("peak.splitNone")))
+                  : peakRows.map((row) =>
+                      h(
+                        "div",
+                        { className: CSS.breakItem, key: row.key },
+                        h(
                           "div",
-                          { className: CSS.breakSub },
-                          h(
+                          { className: CSS.breakRow },
+                          h("span", { className: CSS.breakLabel }, t(row.label)),
+                          h("span", { className: CSS.breakTokens }, formatTokens(row.tokens)),
+                          h("span", { className: CSS.breakAmount }, formatMoney(row.amount, symbol))
+                        ),
+                        h(
+                          "span",
+                          { className: CSS.share },
+                          h("span", { className: CSS.shareFill, style: { width: sharePercent(row.amount, rated.amount) + "%" } })
+                        )
+                      )
+                    )
+                : dailyRows.length === 0
+                  ? h("div", { className: CSS.breakRow }, h("span", { className: CSS.peakLine }, t("daily.empty")))
+                  : [
+                      spark.max <= 0
+                        ? null
+                        : h(
                             "div",
-                            { className: CSS.breakRow },
+                            { className: CSS.sparkWrap, key: "spark" },
+                            h(
+                              "svg",
+                              {
+                                className: CSS.spark,
+                                viewBox: "0 0 " + SPARK_VIEW_W + " " + SPARK_VIEW_H,
+                                preserveAspectRatio: "none",
+                                role: "img",
+                                "aria-label": t("spark.aria", { days: SPARK_DAYS, max: formatMoney(spark.max, symbol) })
+                              },
+                              h("path", { className: CSS.sparkArea, d: sparklineArea(spark.points, SPARK_VIEW_H, SPARK_PAD) }),
+                              h("path", { className: CSS.sparkLine, d: sparklineLine(spark.points), vectorEffect: "non-scaling-stroke" })
+                            ),
                             h(
                               "span",
-                              { className: CSS.peakLine },
-                              [
-                                day.groups.p.tokens > 0 ? t("peak.group.high") + " " + formatMoney(day.groups.p.amount, symbol) : null,
-                                day.groups.o.tokens > 0 ? t("peak.group.low") + " " + formatMoney(day.groups.o.amount, symbol) : null,
-                                day.groups.f.tokens > 0 ? t("peak.group.flat") + " " + formatMoney(day.groups.f.amount, symbol) : null
-                              ]
-                                .filter((part) => part !== null)
-                                .join(" · ")
+                              { className: CSS.sparkNote },
+                              t("spark.summary", { days: SPARK_DAYS, max: formatMoney(spark.max, symbol), avg: formatMoney(sparkAvg, symbol) })
                             )
-                          )
-                        )
-                      : null,
-                    day.models.length > 1
-                      ? h(
+                          ),
+                      dailyRows.slice(0, DAILY_VIEW_DAYS).map((day) => {
+                        const detail = day.models.length > 1 || day.groups.p.tokens > 0 || day.groups.f.tokens > 0;
+                        const expanded = detail && openDay === day.day;
+                        const cells = [
+                          h("span", { className: CSS.breakDay, key: "day" }, formatDayKey(day.day)),
+                          h("span", { className: CSS.breakTokens, key: "tokens" }, formatTokens(day.tokens)),
+                          h("span", { className: CSS.breakAmount, key: "amount" }, formatMoney(day.amount, symbol))
+                        ];
+                        return h(
                           "div",
-                          { className: CSS.breakSub },
-                          day.models.map((model) =>
-                            h(
-                              "div",
-                              { className: CSS.breakRow, key: model.key },
-                              h("span", { className: CSS.breakLabel, title: model.label === null ? t("breakdown.unknown") : model.label }, model.label === null ? t("breakdown.unknown") : model.label),
-                              h("span", { className: CSS.breakTokens }, formatTokens(model.tokens)),
-                              h("span", { className: CSS.breakAmount }, formatMoney(model.amount, symbol))
-                            )
-                          )
-                        )
-                      : null
-                  )
-                )
-              ),
+                          { key: day.day },
+                          detail
+                            ? h(
+                                "button",
+                                {
+                                  type: "button",
+                                  className: CSS.breakRow + " " + CSS.dayRow,
+                                  "aria-expanded": expanded,
+                                  onClick: () => setOpenDay(expanded ? null : day.day)
+                                },
+                                cells
+                              )
+                            : h("div", { className: CSS.breakRow }, cells),
+                          expanded
+                            ? h(
+                                "div",
+                                { className: CSS.breakSub },
+                                day.groups.p.tokens > 0 || day.groups.f.tokens > 0
+                                  ? h(
+                                      "div",
+                                      { className: CSS.breakRow },
+                                      h(
+                                        "span",
+                                        { className: CSS.peakLine },
+                                        [
+                                          day.groups.p.tokens > 0 ? t("peak.group.high") + " " + formatMoney(day.groups.p.amount, symbol) : null,
+                                          day.groups.o.tokens > 0 ? t("peak.group.low") + " " + formatMoney(day.groups.o.amount, symbol) : null,
+                                          day.groups.f.tokens > 0 ? t("peak.group.flat") + " " + formatMoney(day.groups.f.amount, symbol) : null
+                                        ]
+                                          .filter((part) => part !== null)
+                                          .join(" · ")
+                                      )
+                                    )
+                                  : null,
+                                day.models.map((model) =>
+                                  h(
+                                    "div",
+                                    { className: CSS.breakRow, key: model.key },
+                                    h("span", { className: CSS.breakLabel, title: model.label === null ? t("breakdown.unknown") : model.label }, model.label === null ? t("breakdown.unknown") : model.label),
+                                    h("span", { className: CSS.breakTokens }, formatTokens(model.tokens)),
+                                    h("span", { className: CSS.breakAmount }, formatMoney(model.amount, symbol))
+                                  )
+                                )
+                              )
+                            : null
+                        );
+                      })
+                    ]
+          ),
           h("div", { className: CSS.note }, t("panel.note")),
           rated.source === "fallback"
             ? h("div", { className: CSS.warnNote }, t("rate.unpriced", { model: rated.modelLabel }))
             : null,
-          h(
-            "div",
-            { className: CSS.fields },
-            h("span", { className: CSS.fieldLabel }, t("currency.label")),
-            h(
-              "select",
-              {
-                className: CSS.select,
-                value: currencyPreset === null ? "custom" : currencyPreset.code,
-                onChange: (event) => {
-                  const preset = CURRENCY_PRESETS.find((item) => item.code === event.target.value);
-                  if (preset === undefined) return;
-                  updateCurrency({ code: preset.code, symbol: preset.symbol, perUsd: preset.perUsd });
-                  refreshRate(preset.code);
-                }
-              },
-              CURRENCY_PRESETS.map((preset) => h("option", { key: preset.code, value: preset.code }, preset.code + " " + preset.symbol)),
-              currencyPreset === null ? h("option", { value: "custom" }, t("currency.custom", { symbol })) : null
-            ),
-            h("span", { className: CSS.fieldLabel }, t("currency.perUsd")),
-            h("input", {
-              key: symbol + ":" + config.currency.perUsd,
-              className: CSS.rateInput,
-              type: "number",
-              min: "0.0001",
-              step: "0.01",
-              defaultValue: String(config.currency.perUsd),
-              "aria-label": t("currency.perUsd"),
-              onBlur: (event) => updateCurrency({ perUsd: event.target.value }),
-              onKeyDown: (event) => {
-                if (event.key === "Enter") event.target.blur();
-              }
-            })
-          ),
-          h(
-            "div",
-            { className: CSS.fxRow },
-            h(
-              "button",
-              {
-                type: "button",
-                className: CSS.fxButton,
-                disabled: fxState === "loading" || currencyPreset === null,
-                onClick: () => refreshRate()
-              },
-              fxState === "loading" ? t("currency.fetching") : t("currency.fetch")
-            ),
-            h(
-              "label",
-              { className: CSS.fxAuto },
-              h("input", {
-                type: "checkbox",
-                checked: config.currency.auto === true,
-                onChange: (event) => updateCurrency({ auto: event.target.checked })
-              }),
-              t("currency.auto")
-            )
-          ),
-          fxNote !== null ? h("div", { className: CSS.fxNote }, fxNote) : null,
           editing
             ? h(
                 "div",
                 { className: CSS.editor },
+                h(
+                  "div",
+                  { className: CSS.fields },
+                  h("span", { className: CSS.fieldLabel }, t("currency.label")),
+                  h(
+                    "select",
+                    {
+                      className: CSS.select,
+                      value: currencyPreset === null ? "custom" : currencyPreset.code,
+                      onChange: (event) => {
+                        const preset = CURRENCY_PRESETS.find((item) => item.code === event.target.value);
+                        if (preset === undefined) return;
+                        updateCurrency({ code: preset.code, symbol: preset.symbol, perUsd: preset.perUsd });
+                        refreshRate(preset.code);
+                      }
+                    },
+                    CURRENCY_PRESETS.map((preset) => h("option", { key: preset.code, value: preset.code }, preset.code + " " + preset.symbol)),
+                    currencyPreset === null ? h("option", { value: "custom" }, t("currency.custom", { symbol })) : null
+                  ),
+                  h("span", { className: CSS.fieldLabel }, t("currency.perUsd")),
+                  h("input", {
+                    key: symbol + ":" + config.currency.perUsd,
+                    className: CSS.rateInput,
+                    type: "number",
+                    min: "0.0001",
+                    step: "0.01",
+                    defaultValue: String(config.currency.perUsd),
+                    "aria-label": t("currency.perUsd"),
+                    onBlur: (event) => updateCurrency({ perUsd: event.target.value }),
+                    onKeyDown: (event) => {
+                      if (event.key === "Enter") event.target.blur();
+                    }
+                  })
+                ),
+                h(
+                  "div",
+                  { className: CSS.fxRow },
+                  h(
+                    "button",
+                    {
+                      type: "button",
+                      className: CSS.fxButton,
+                      disabled: fxState === "loading" || currencyPreset === null,
+                      onClick: () => refreshRate()
+                    },
+                    fxState === "loading" ? t("currency.fetching") : t("currency.fetch")
+                  ),
+                  h(
+                    "label",
+                    { className: CSS.fxAuto },
+                    h("input", {
+                      type: "checkbox",
+                      checked: config.currency.auto === true,
+                      onChange: (event) => updateCurrency({ auto: event.target.checked })
+                    }),
+                    t("currency.auto")
+                  )
+                ),
+                fxNote !== null ? h("div", { className: CSS.fxNote }, fxNote) : null,
                 h("textarea", {
                   className: CSS.textarea,
                   value: draft,
@@ -1737,12 +1776,15 @@ const zh = {
   "peak.badgeLow": "谷",
   "peak.modeHigh": "当前处于高峰时段，单价 ×{factor}",
   "peak.modeLow": "当前处于低峰（空闲）时段",
-  "breakdown.byModel": "按模型 · {count}",
   "breakdown.unknown": "未知模型",
   "breakdown.byModelHint": "本会话各 provider / 模型的用量与花费",
-  "daily.title": "每日",
   "daily.hint": "按观察时刻归入当天，保留最近 90 天",
-  "peak.splitTitle": "峰谷",
+  "tab.model": "模型",
+  "tab.peak": "峰谷",
+  "tab.daily": "每日",
+  "breakdown.singleModel": "本会话只用了一个模型",
+  "peak.splitNone": "本会话没有分时计费的消耗",
+  "daily.empty": "还没有历史记录",
   "peak.splitHint": "本会话按当时生效的费率档位汇总（高峰 / 低峰 / 平价）",
   "peak.group.high": "高峰",
   "peak.group.low": "低峰",
@@ -1789,12 +1831,15 @@ const en = {
   "peak.badgeLow": "Off",
   "peak.modeHigh": "Currently in peak hours, unit price ×{factor}",
   "peak.modeLow": "Currently off-peak (idle) hours",
-  "breakdown.byModel": "By model · {count}",
   "breakdown.unknown": "Unknown model",
   "breakdown.byModelHint": "Tokens and spend per provider / model in this session",
-  "daily.title": "Daily",
   "daily.hint": "Bucketed by observation time, last 90 days kept",
-  "peak.splitTitle": "Peak / off-peak",
+  "tab.model": "Models",
+  "tab.peak": "Peak",
+  "tab.daily": "Daily",
+  "breakdown.singleModel": "One model in this session",
+  "peak.splitNone": "No time-of-day priced usage in this session",
+  "daily.empty": "No history yet",
   "peak.splitHint": "This session grouped by the rate bracket that applied (peak / off-peak / flat)",
   "peak.group.high": "Peak",
   "peak.group.low": "Off-peak",
