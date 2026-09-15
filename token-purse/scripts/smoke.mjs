@@ -111,7 +111,7 @@ function loadInternals(react, now, extra) {
   const sandbox = makeSandbox(react, extra, now);
   const source =
     readFileSync(join(root, "src", "client.js"), "utf8") +
-    "\nexports.__test = { rateUsage, rateLedger, resolveRates, mergeConfig, formatMoney, formatTokens, formatRate, DEFAULT_CONFIG, TokenPurseView, matchCurrencyPreset, findCurrencyPreset, fetchUsdRate, parsePeakWindow, parsePeak, isPeakAt, ratesAt, emptyLedger, syncLedger, migrateConfigV1, rateSource, CURRENCY_PRESETS, localDayKey, sessionModelRows, formatModelLabel, sharePercent, legacyCurrencyConfig, migrateLegacyCurrency, readConfig, dailySeries, sparklinePoints, sparklineLine, sparklineArea, SPARK_DAYS, sessionDayRows, mergeSessionDayRows, dailyStats, normalizeDaily, emptyDaily, formatDayKey };\n";
+    "\nexports.__test = { rateUsage, rateLedger, resolveRates, mergeConfig, formatMoney, formatTokens, formatRate, DEFAULT_CONFIG, TokenPurseView, matchCurrencyPreset, findCurrencyPreset, fetchUsdRate, parsePeakWindow, parsePeak, isPeakAt, ratesAt, emptyLedger, syncLedger, migrateConfigV1, rateSource, CURRENCY_PRESETS, localDayKey, sessionModelRows, formatModelLabel, sharePercent, legacyCurrencyConfig, migrateLegacyCurrency, readConfig, dailySeries, sparklinePoints, sparklineLine, sparklineArea, SPARK_DAYS, splitByPeak, ledgerSegments, priceSegment, normalizePeakFlag, sessionDayRows, mergeSessionDayRows, dailyStats, normalizeDaily, emptyDaily, formatDayKey };\n";
   vm.runInContext(source, sandbox);
   return sandbox.exports.__test;
 }
@@ -282,6 +282,19 @@ check(
 );
 check("sessionModelRows sorts by amount", modelRows[0].amount > modelRows[1].amount);
 check("sessionModelRows covers the total", Math.abs(modelRows.reduce((sum, row) => sum + row.amount, 0) - mixedRated.amount) < 1e-9);
+const bracketRows = internals.splitByPeak(splitLedger, { uncachedInputTokens: 2000000 }, { next: { model: "deepseek-flash" } }, ledgerConfig, monday0900Utc.getTime());
+check(
+  "splitByPeak separates peak from off-peak",
+  bracketRows.length === 2 &&
+    bracketRows[0].key === "peak" &&
+    Math.abs(bracketRows[0].amount - 2) < 1e-9 &&
+    bracketRows[0].tokens === 1000000 &&
+    bracketRows[1].key === "off" &&
+    Math.abs(bracketRows[1].amount - 1) < 1e-9
+);
+check("splitByPeak covers the total", Math.abs(bracketRows.reduce((sum, row) => sum + row.amount, 0) - splitRated.amount) < 1e-9);
+check("splitByPeak falls back to flat", internals.splitByPeak(null, { uncachedInputTokens: 1000000 }, { next: { model: "deepseek-flash" } }, internals.mergeConfig(config, { models: { "deepseek-flash": { input: 1 } } }), monday1200Utc.getTime())[0].key === "flat");
+check("normalizePeakFlag keeps legacy booleans", internals.normalizePeakFlag(1) === "p" && internals.normalizePeakFlag(0) === "o" && internals.normalizePeakFlag("f") === "f" && internals.normalizePeakFlag(undefined) === "o");
 check("sharePercent bounds", internals.sharePercent(0, 10) === 0 && internals.sharePercent(1, 100) === 2 && internals.sharePercent(10, 10) === 100);
 check("formatModelLabel plain model", internals.formatModelLabel(null, "m") === "m" && internals.formatModelLabel("p", "m") === "p / m");
 
@@ -317,6 +330,26 @@ check(
   "dailyStats carries per-model rows",
   dayStatRows[0].models.length === 1 && dayStatRows[0].models[0].label === null && Math.abs(dayStatRows[0].models[0].amount - dayStatRows[0].amount) < 1e-9
 );
+const peakDayStore = internals.mergeSessionDayRows(
+  internals.emptyDaily(),
+  "s1",
+  [
+    { d: "2025-01-06", p: null, m: "deepseek-flash", k: "p", b: { uncachedInputTokens: 1000000, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 } },
+    { d: "2025-01-06", p: null, m: "deepseek-flash", k: "o", b: { uncachedInputTokens: 1000000, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 } },
+    { d: "2025-01-06", p: null, m: "deepseek-flash", k: "f", b: { uncachedInputTokens: 1000000, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 } }
+  ],
+  day2
+);
+const peakDayStats = internals.dailyStats(peakDayStore, ledgerConfig);
+check(
+  "dailyStats groups one day by bracket",
+  Math.abs(peakDayStats[0].groups.p.amount - 2) < 1e-9 &&
+    Math.abs(peakDayStats[0].groups.o.amount - 1) < 1e-9 &&
+    Math.abs(peakDayStats[0].groups.f.amount - 1) < 1e-9 &&
+    peakDayStats[0].groups.p.tokens === 1000000 &&
+    Math.abs(peakDayStats[0].amount - peakDayStats[0].groups.p.amount - peakDayStats[0].groups.o.amount - peakDayStats[0].groups.f.amount) < 1e-9
+);
+
 const multiDayStore = internals.mergeSessionDayRows(
   internals.emptyDaily(),
   "s1",
@@ -441,6 +474,10 @@ react.seed({ 1: true });
 const modelSerialized = JSON.stringify(modelInternals.TokenPurseView({ usage, selection, t }));
 check("panel renders by-model breakdown", modelSerialized.indexOf("breakdown.byModel") !== -1 && modelSerialized.indexOf("packyapi / deepseek-v4-pro") !== -1);
 check("by-model rows carry a share bar", modelSerialized.indexOf("TPurse_shareFill") !== -1 && modelSerialized.indexOf("TPurse_breakAmount") !== -1);
+check(
+  "panel renders the peak / off-peak split",
+  modelSerialized.indexOf("peak.splitTitle") !== -1 && modelSerialized.indexOf("peak.group.low") !== -1 && modelSerialized.indexOf("peak.group.high") === -1
+);
 
 const legacyCurrencyInternals = loadInternals(react, undefined, (sandbox) => {
   sandbox.window.localStorage.getItem = (key) => (key === "dsh.token-purse.config.v2" ? JSON.stringify({ currency: { symbol: "$", perUsd: 1, auto: false }, models: {} }) : null);

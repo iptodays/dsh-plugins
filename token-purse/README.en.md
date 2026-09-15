@@ -172,6 +172,23 @@ DeepSeek official (and packyapi, which resells it) charges double during weekday
   when the panel first opened. A refresh does not clear the ledger (it is persisted
   per session id).
 
+## Peak / off-peak spend
+
+The **Peak / off-peak** section groups the **current session** by the rate bracket that was in
+effect when each increment was observed:
+
+- **Peak**: inside a configured time window and the model has `peakMultiplier > 1`.
+- **Off-peak**: same model, outside the window.
+- **Flat**: the model has no time-of-day pricing (`peakMultiplier` is 1).
+
+Each row shows tokens, amount, and a share bar. The section appears as soon as a session has any
+peak or off-peak spend; if everything is flat-priced it is omitted as noise. The three amounts
+always sum to the total at the top of the panel.
+
+Matching that, any **day with peak (or flat) usage** in **Daily** gets an extra line under the
+date — `Peak ¥x · Off-peak ¥y` — so you can see whether moving work off-peak actually paid off
+over weeks.
+
 ## Daily stats
 
 The bottom of the panel lists the last few days' tokens and spend (up to 7):
@@ -275,6 +292,9 @@ otherwise refresh the page.
 
 ## Changelog
 
+- **0.1.8**: a **Peak / off-peak** section (three groups with share bars) and a peak/off-peak
+  line for days that had peak usage. The bracket flag is now three-state with a legacy
+  fallback.
 - **0.1.7**: a **last-30-days spend sparkline** above **Daily** (missing days zero-filled, peak
   and average labelled).
 - **0.1.6**: the rates editor no longer says "USD", and a **legacy USD config from 0.1.0 is

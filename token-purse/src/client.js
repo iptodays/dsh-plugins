@@ -223,6 +223,7 @@ const CSS_TEXT =
   ".TPurse_sparkLine{fill:none;stroke:var(--dsw-alias-label-secondary);stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round}" +
   ".TPurse_sparkArea{fill:var(--dsw-alias-fill-l2);stroke:none}" +
   ".TPurse_sparkNote{display:block;margin-top:2px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:15px;font-variant-numeric:tabular-nums}" +
+  ".TPurse_peakLine{flex:1 1 auto;min-width:0;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}" +
   ".TPurse_warnNote{margin-top:6px;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px;word-break:break-word}" +
   ".TPurse_sourceChip{flex:none;padding:0 6px;border-radius:999px;background:var(--dsw-alias-fill-l2,transparent);color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:15px}" +
   ".TPurse_sourceChipExact{color:var(--dsw-alias-label-secondary)}" +
@@ -282,6 +283,7 @@ const CSS = {
   breakSub: "TPurse_breakSub",
   share: "TPurse_share",
   shareFill: "TPurse_shareFill",
+  peakLine: "TPurse_peakLine",
   sparkWrap: "TPurse_sparkWrap",
   spark: "TPurse_spark",
   sparkLine: "TPurse_sparkLine",
@@ -867,6 +869,13 @@ function emptyDaily() {
   return { v: 1, days: {} };
 }
 
+/** 档位标记：p 高峰 / o 低峰 / f 平价。兼容 0.1.7 及以前的布尔值。 */
+function normalizePeakFlag(value) {
+  if (value === "p" || value === 1 || value === true) return "p";
+  if (value === "f") return "f";
+  return "o";
+}
+
 function normalizeDaily(raw) {
   const store = emptyDaily();
   if (raw === null || raw === undefined || typeof raw !== "object" || Array.isArray(raw)) return store;
@@ -882,7 +891,7 @@ function normalizeDaily(raw) {
         s: typeof row.s === "string" ? row.s : null,
         p: typeof row.p === "string" ? row.p : null,
         m: typeof row.m === "string" ? row.m : null,
-        k: row.k === 1 ? 1 : 0,
+        k: normalizePeakFlag(row.k),
         b: bucketSnapshot(row.b)
       });
     }
@@ -915,7 +924,7 @@ function sessionDayRows(ledger, config) {
   const push = (buckets, provider, model, moment) => {
     const day = localDayKey(moment);
     const rates = resolveRates(config, model, provider);
-    const flag = peak !== null && rates.peakMultiplier > 1 && isPeakAt(new Date(moment), peak) ? 1 : 0;
+    const flag = rates.peakMultiplier <= 1 ? "f" : isPeakAt(new Date(moment), peak) ? "p" : "o";
     const key = day + "\u0000" + (provider === null ? "" : provider) + "\u0000" + (model === null ? "" : model) + "\u0000" + flag;
     let row = rows.get(key);
     if (row === undefined) {
@@ -931,43 +940,27 @@ function sessionDayRows(ledger, config) {
   return Array.from(rows.values());
 }
 
-/** 当前会话按 provider/model 拆分的明细，金额大的在前；未覆盖的余量算到当前模型。 */
-function sessionModelRows(ledger, usage, selection, config, at) {
-  const peak = parsePeak(config);
-  const fx = fxPerUsd(config);
-  const perUsdValue = toNumber(config.currency.perUsd, 1);
-  const perUsd = perUsdValue > 0 ? perUsdValue : 1;
-  const rows = new Map();
+/** 把账本摊平成计价所需的「段」：base + 每笔增量 + 未被覆盖的余量（算到当前模型）。 */
+function ledgerSegments(ledger, usage, selection, at) {
+  const current = pickModel(selection);
+  const modelId = current === null ? null : current.model;
+  const providerId = current === null || typeof current.provider !== "string" || current.provider.length === 0 ? null : current.provider;
+  const segments = [];
   const covered = zeroBuckets();
+  /* 条目没记 provider/model 时回退到当前模型，和 rateLedger 的口径保持一致。 */
   const push = (buckets, provider, model, moment) => {
-    const key = (provider === null ? "" : provider) + "\u0000" + (model === null ? "" : model);
-    let row = rows.get(key);
-    if (row === undefined) {
-      row = { key, provider, model, label: formatModelLabel(provider, model), tokens: 0, amount: 0 };
-      rows.set(key, row);
-    }
-    const rates = ratesAt(config, model, moment, peak, provider);
-    const native = costBuckets(buckets, rates);
-    const ratePerUsd = toNumber(fx[rates.currency], 1);
-    const divide = ratePerUsd > 0 ? 1 / ratePerUsd : 1;
-    for (const bucket of BUCKETS) {
-      row.tokens += buckets[bucket];
-      row.amount += native[bucket] * divide * perUsd;
-    }
+    segments.push({
+      b: buckets,
+      provider: provider === null || provider === undefined ? providerId : provider,
+      model: model === null || model === undefined ? modelId : model,
+      at: moment
+    });
+    for (const bucket of BUCKETS) covered[bucket] += buckets[bucket];
   };
   if (ledger !== null && ledger !== undefined) {
-    if (ledger.base !== null) {
-      push(ledger.base.b, ledger.base.provider, ledger.base.model, ledger.base.at);
-      for (const bucket of BUCKETS) covered[bucket] += ledger.base.b[bucket];
-    }
-    for (const entry of ledger.entries) {
-      push(entry.b, entry.provider, entry.model, entry.at);
-      for (const bucket of BUCKETS) covered[bucket] += entry.b[bucket];
-    }
+    if (ledger.base !== null) push(ledger.base.b, ledger.base.provider, ledger.base.model, ledger.base.at);
+    for (const entry of ledger.entries) push(entry.b, entry.provider, entry.model, entry.at);
   }
-  const model = pickModel(selection);
-  const modelId = model === null ? null : model.model;
-  const providerId = model === null || typeof model.provider !== "string" || model.provider.length === 0 ? null : model.provider;
   const totals = bucketSnapshot(usage);
   const rest = zeroBuckets();
   let hasRest = false;
@@ -979,7 +972,61 @@ function sessionModelRows(ledger, usage, selection, config, at) {
     }
   }
   if (hasRest) push(rest, providerId, modelId, at);
+  return segments;
+}
+
+/** 一段用量折算成显示币种的花费。 */
+function priceSegment(buckets, rates, fx, perUsd) {
+  const native = costBuckets(buckets, rates);
+  const ratePerUsd = toNumber(fx[rates.currency], 1);
+  const divide = ratePerUsd > 0 ? 1 / ratePerUsd : 1;
+  let amount = 0;
+  for (const bucket of BUCKETS) amount += native[bucket] * divide * perUsd;
+  return amount;
+}
+
+/** 当前会话按 provider/model 拆分的明细，金额大的在前。 */
+function sessionModelRows(ledger, usage, selection, config, at) {
+  const peak = parsePeak(config);
+  const fx = fxPerUsd(config);
+  const perUsdValue = toNumber(config.currency.perUsd, 1);
+  const perUsd = perUsdValue > 0 ? perUsdValue : 1;
+  const rows = new Map();
+  for (const segment of ledgerSegments(ledger, usage, selection, at)) {
+    const key = (segment.provider === null ? "" : segment.provider) + "\u0000" + (segment.model === null ? "" : segment.model);
+    let row = rows.get(key);
+    if (row === undefined) {
+      row = { key, provider: segment.provider, model: segment.model, label: formatModelLabel(segment.provider, segment.model), tokens: 0, amount: 0 };
+      rows.set(key, row);
+    }
+    const rates = ratesAt(config, segment.model, segment.at, peak, segment.provider);
+    row.amount += priceSegment(segment.b, rates, fx, perUsd);
+    for (const bucket of BUCKETS) row.tokens += segment.b[bucket];
+  }
   const list = Array.from(rows.values());
+  list.sort((left, right) => right.amount - left.amount);
+  return list;
+}
+
+/** 当前会话按「高峰 / 低峰 / 平价」分组；平价指没有配置分时价的模型。 */
+function splitByPeak(ledger, usage, selection, config, at) {
+  const peak = parsePeak(config);
+  const fx = fxPerUsd(config);
+  const perUsdValue = toNumber(config.currency.perUsd, 1);
+  const perUsd = perUsdValue > 0 ? perUsdValue : 1;
+  const groups = {
+    peak: { key: "peak", label: "peak.group.high", tokens: 0, amount: 0 },
+    off: { key: "off", label: "peak.group.low", tokens: 0, amount: 0 },
+    flat: { key: "flat", label: "peak.group.flat", tokens: 0, amount: 0 }
+  };
+  for (const segment of ledgerSegments(ledger, usage, selection, at)) {
+    const rates = ratesAt(config, segment.model, segment.at, peak, segment.provider);
+    const member = rates.peakMultiplier <= 1 ? "flat" : isPeakAt(new Date(segment.at), peak) ? "peak" : "off";
+    const target = groups[member];
+    target.amount += priceSegment(segment.b, rates, fx, perUsd);
+    for (const bucket of BUCKETS) target.tokens += segment.b[bucket];
+  }
+  const list = [groups.off, groups.peak, groups.flat].filter((row) => row.tokens > 0);
   list.sort((left, right) => right.amount - left.amount);
   return list;
 }
@@ -1008,11 +1055,17 @@ function dailyStats(store, config) {
   const days = [];
   for (const day of Object.keys(store.days)) {
     const byModel = new Map();
+    const groups = {
+      p: { tokens: 0, amount: 0 },
+      o: { tokens: 0, amount: 0 },
+      f: { tokens: 0, amount: 0 }
+    };
     let amount = 0;
     let tokens = 0;
     for (const row of store.days[day]) {
+      const flag = normalizePeakFlag(row.k);
       const rates = resolveRates(config, row.m, row.p);
-      const factor = row.k === 1 && rates.peakMultiplier > 1 ? rates.peakMultiplier : 1;
+      const factor = flag === "p" && rates.peakMultiplier > 1 ? rates.peakMultiplier : 1;
       const effective = {
         currency: rates.currency,
         input: rates.input * factor,
@@ -1034,13 +1087,15 @@ function dailyStats(store, config) {
         const value = native[bucket] * divide * perUsd;
         amount += value;
         entry.amount += value;
+        groups[flag].amount += value;
         tokens += row.b[bucket];
         entry.tokens += row.b[bucket];
+        groups[flag].tokens += row.b[bucket];
       }
     }
     const models = Array.from(byModel.values());
     models.sort((left, right) => right.amount - left.amount);
-    days.push({ day, amount, tokens, models });
+    days.push({ day, amount, tokens, models, groups });
   }
   days.sort((left, right) => (left.day < right.day ? 1 : left.day > right.day ? -1 : 0));
   return days;
@@ -1207,6 +1262,7 @@ function TokenPurseView({ usage, selection, t, sessionId }) {
   );
   const dailyRows = dailyStats(daily, config);
   const modelRows = sessionModelRows(ledger, usage, selection, config, Date.now());
+  const peakRows = splitByPeak(ledger, usage, selection, config, Date.now());
   const sparkSeries = dailySeries(dailyRows, SPARK_DAYS, Date.now());
   const spark = sparklinePoints(sparkSeries, SPARK_VIEW_W, SPARK_VIEW_H, SPARK_PAD);
   const sparkAvg = sparkSeries.reduce((sum, point) => sum + point.amount, 0) / SPARK_DAYS;
@@ -1420,6 +1476,31 @@ function TokenPurseView({ usage, selection, t, sessionId }) {
                   )
                 )
               ),
+          peakRows.some((row) => row.key !== "flat")
+            ? h(
+                "div",
+                { className: CSS.section },
+                h("div", { className: CSS.sectionHead, title: t("peak.splitHint") }, t("peak.splitTitle")),
+                peakRows.map((row) =>
+                  h(
+                    "div",
+                    { className: CSS.breakItem, key: row.key },
+                    h(
+                      "div",
+                      { className: CSS.breakRow },
+                      h("span", { className: CSS.breakLabel }, t(row.label)),
+                      h("span", { className: CSS.breakTokens }, formatTokens(row.tokens)),
+                      h("span", { className: CSS.breakAmount }, formatMoney(row.amount, symbol))
+                    ),
+                    h(
+                      "span",
+                      { className: CSS.share },
+                      h("span", { className: CSS.shareFill, style: { width: sharePercent(row.amount, rated.amount) + "%" } })
+                    )
+                  )
+                )
+              )
+            : null,
           dailyRows.length === 0
             ? null
             : h(
@@ -1460,6 +1541,27 @@ function TokenPurseView({ usage, selection, t, sessionId }) {
                       h("span", { className: CSS.breakTokens }, formatTokens(day.tokens)),
                       h("span", { className: CSS.breakAmount }, formatMoney(day.amount, symbol))
                     ),
+                    day.groups.p.tokens > 0 || day.groups.f.tokens > 0
+                      ? h(
+                          "div",
+                          { className: CSS.breakSub },
+                          h(
+                            "div",
+                            { className: CSS.breakRow },
+                            h(
+                              "span",
+                              { className: CSS.peakLine },
+                              [
+                                day.groups.p.tokens > 0 ? t("peak.group.high") + " " + formatMoney(day.groups.p.amount, symbol) : null,
+                                day.groups.o.tokens > 0 ? t("peak.group.low") + " " + formatMoney(day.groups.o.amount, symbol) : null,
+                                day.groups.f.tokens > 0 ? t("peak.group.flat") + " " + formatMoney(day.groups.f.amount, symbol) : null
+                              ]
+                                .filter((part) => part !== null)
+                                .join(" · ")
+                            )
+                          )
+                        )
+                      : null,
                     day.models.length > 1
                       ? h(
                           "div",
@@ -1640,6 +1742,11 @@ const zh = {
   "breakdown.byModelHint": "本会话各 provider / 模型的用量与花费",
   "daily.title": "每日",
   "daily.hint": "按观察时刻归入当天，保留最近 90 天",
+  "peak.splitTitle": "峰谷",
+  "peak.splitHint": "本会话按当时生效的费率档位汇总（高峰 / 低峰 / 平价）",
+  "peak.group.high": "高峰",
+  "peak.group.low": "低峰",
+  "peak.group.flat": "平价",
   "spark.summary": "近 {days} 天 · 最高 {max} · 日均 {avg}",
   "spark.aria": "近 {days} 天花费折线图，最高 {max}",
   "peak.note": "{windows} · {timezone}",
@@ -1687,6 +1794,11 @@ const en = {
   "breakdown.byModelHint": "Tokens and spend per provider / model in this session",
   "daily.title": "Daily",
   "daily.hint": "Bucketed by observation time, last 90 days kept",
+  "peak.splitTitle": "Peak / off-peak",
+  "peak.splitHint": "This session grouped by the rate bracket that applied (peak / off-peak / flat)",
+  "peak.group.high": "Peak",
+  "peak.group.low": "Off-peak",
+  "peak.group.flat": "Flat",
   "spark.summary": "Last {days} days · peak {max} · avg {avg}",
   "spark.aria": "Spend over the last {days} days, peak {max}",
   "peak.note": "{windows} · {timezone}",
