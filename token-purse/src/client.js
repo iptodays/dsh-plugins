@@ -152,7 +152,7 @@ async function fetchUsdRate(code) {
 
 const CSS_TEXT =
   ".TPurse_root{position:relative;display:inline-flex;align-items:center}" +
-  ".TPurse_trigger{display:inline-flex;align-items:center;gap:3px;height:28px;padding:0 8px;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px;cursor:pointer;font-variant-numeric:tabular-nums;transition:background-color .14s ease,color .14s ease}" +
+  ".TPurse_srOnly{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.TPurse_trigger{display:inline-flex;align-items:center;gap:3px;height:28px;min-height:24px;padding:0 8px;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px;cursor:pointer;font-variant-numeric:tabular-nums;transition:background-color .14s ease,color .14s ease}" +
   ".TPurse_trigger:hover,.TPurse_trigger:focus-visible{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}" +
   ".TPurse_approx{opacity:.75}" +
   ".TPurse_amount{font-weight:500;color:var(--dsw-alias-label-secondary)}" +
@@ -172,14 +172,14 @@ const CSS_TEXT =
   ".TPurse_tokens{min-width:52px;text-align:right;color:var(--dsw-alias-label-secondary)}" +
   ".TPurse_sub{min-width:68px;text-align:right;color:var(--dsw-alias-label-primary)}" +
   ".TPurse_note{margin-top:10px;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px}" +
-  ".TPurse_editButton{margin-top:8px;padding:0;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font-size:11px;cursor:pointer;transition:color .14s ease}" +
+  ".TPurse_editButton{margin-top:6px;padding:2px 0;min-height:24px;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font-size:11px;cursor:pointer;transition:color .14s ease}" +
   ".TPurse_editButton:hover{color:var(--dsw-alias-label-secondary)}" +
   ".TPurse_editor{margin-top:8px}" +
   ".TPurse_textarea{box-sizing:border-box;width:100%;height:148px;padding:6px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-markdown-code-font-family);font-size:11px;line-height:16px;resize:vertical}" +
   ".TPurse_hint{margin-top:4px;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px}" +
   ".TPurse_error{margin-top:4px;padding-left:6px;border-left:2px solid var(--dsw-alias-state-error-primary);color:var(--dsw-alias-label-primary);font-size:11px}" +
   ".TPurse_actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}" +
-  ".TPurse_ghost,.TPurse_primary{padding:4px 10px;border:0;border-radius:8px;font-size:11px;cursor:pointer;transition:background-color .14s ease,opacity .14s ease}" +
+  ".TPurse_ghost,.TPurse_primary{min-height:24px;padding:4px 10px;border:0;border-radius:8px;font-size:11px;cursor:pointer;transition:background-color .14s ease,opacity .14s ease}" +
   ".TPurse_ghost{background:transparent;color:var(--dsw-alias-label-secondary)}" +
   ".TPurse_ghost:hover{background:var(--dsw-alias-interactive-bg-hover)}" +
   ".TPurse_primary{background:var(--dsw-alias-label-primary);color:var(--dsw-specific-menu)}" +
@@ -189,14 +189,14 @@ const CSS_TEXT =
   "[data-composer-stats] .TPurse_amount{font-weight:400}" +
   ".TPurse_fields{display:grid;grid-template-columns:max-content minmax(0,1fr);align-items:center;gap:6px 10px;margin-top:12px;padding-top:10px;border-top:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);font-size:11px}" +
   ".TPurse_fieldLabel{white-space:nowrap}" +
-  ".TPurse_select,.TPurse_rateInput{font:inherit;font-size:11px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-interactive-bg-hover);border:1px solid var(--dsw-alias-border-l1);border-radius:6px;padding:2px 5px}" +
+  ".TPurse_select,.TPurse_rateInput{min-height:24px;font:inherit;font-size:11px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-interactive-bg-hover);border:1px solid var(--dsw-alias-border-l1);border-radius:6px;padding:2px 5px}" +
   ".TPurse_select{width:100%;max-width:160px;min-width:0}" +
   ".TPurse_rateInput{width:76px;text-align:right;font-family:var(--dsw-font-markdown-code-font-family);font-variant-numeric:tabular-nums}" +
   ".TPurse_fxRow{display:flex;align-items:center;gap:10px;margin-top:8px;color:var(--dsw-alias-label-secondary);font-size:11px}" +
-  ".TPurse_fxButton{padding:2px 8px;border:1px solid var(--dsw-alias-border-l1);border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;cursor:pointer;transition:background-color .14s ease}" +
+  ".TPurse_fxButton{min-height:24px;padding:2px 8px;border:1px solid var(--dsw-alias-border-l1);border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;cursor:pointer;transition:background-color .14s ease}" +
   ".TPurse_fxButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}" +
   ".TPurse_fxButton:disabled{opacity:.5;cursor:default}" +
-  ".TPurse_fxAuto{display:inline-flex;align-items:center;gap:4px;cursor:pointer}" +
+  ".TPurse_fxAuto{display:inline-flex;align-items:center;gap:4px;min-height:24px;cursor:pointer}" +
   ".TPurse_fxNote{margin-top:5px;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px;word-break:break-word}" +
   ".TPurse_peakNote{display:flex;align-items:flex-start;gap:6px;margin-top:10px;padding-top:8px;border-top:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px}" +
   ".TPurse_peakChip{flex:none;padding:1px 6px;border-radius:999px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}" +
@@ -227,7 +227,7 @@ const CSS_TEXT =
   ".TPurse_share{display:block;height:3px;margin:3px 0 0;border-radius:2px;background:var(--dsw-alias-interactive-bg-hover);overflow:hidden}" +
   ".TPurse_shareFill{display:block;height:100%;border-radius:2px;background:var(--dsw-alias-label-tertiary);transform-origin:left center;animation:tp-grow .42s cubic-bezier(.22,1,.36,1) both}" +
   ".TPurse_sparkWrap{position:relative;margin:2px 0 6px}" +
-  ".TPurse_spark{display:block;width:100%;height:28px;overflow:visible}" +
+  ".TPurse_spark{display:block;width:100%;height:28px;overflow:visible}.TPurse_spark:focus-visible{outline:2px solid var(--dsw-alias-label-secondary);outline-offset:2px;border-radius:4px}" +
   ".TPurse_sparkOverlay{position:absolute;left:0;right:0;top:0;height:28px}" +
   ".TPurse_sparkCell{position:absolute;top:0;bottom:0;display:block}" +
   ".TPurse_sparkGuide{position:absolute;top:0;bottom:0;width:1px;margin-left:-.5px;background:var(--dsw-alias-border-l1);pointer-events:none}" +
@@ -237,7 +237,7 @@ const CSS_TEXT =
   ".TPurse_sparkArea{fill:var(--dsw-alias-label-tertiary);fill-opacity:.16;stroke:none;animation:tp-fade .5s ease-out .3s both}" +
   ".TPurse_sparkNote{display:block;margin-top:2px;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:15px;font-variant-numeric:tabular-nums}" +
   ".TPurse_tabs{display:flex;gap:2px;margin-top:10px;padding:2px;border-radius:8px;background:var(--dsw-alias-interactive-bg-hover)}" +
-  ".TPurse_tab{flex:1 1 0;min-width:0;padding:3px 6px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px;font-family:inherit;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background-color .14s ease,color .14s ease}" +
+  ".TPurse_tab{flex:1 1 0;min-width:0;min-height:24px;padding:5px 6px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px;font-family:inherit;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background-color .14s ease,color .14s ease}" +
   ".TPurse_tabOn{background:var(--dsw-alias-button-ghost-active-fill);color:var(--dsw-alias-label-primary);font-weight:500}" +
   ".TPurse_sectionFlat{margin-top:8px;padding-top:0;border-top:0}" +
   ".TPurse_dayRow{width:100%;padding:4px 0;margin:-4px 0;border:0;border-radius:5px;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer;transition:background-color .14s ease}.TPurse_dayRow:hover,.TPurse_dayRow:focus-visible{background:var(--dsw-alias-interactive-bg-hover)}" +
@@ -314,6 +314,7 @@ const CSS = {
   toneCell: "TPurse_toneCell",
   toneTip: "TPurse_toneTip",
   toneTipText: "TPurse_toneTipText",
+  srOnly: "TPurse_srOnly",
   toneSeg: "TPurse_toneSeg",
   toneDot: "TPurse_toneDot",
   toneHead: "TPurse_toneHead",
@@ -1146,7 +1147,13 @@ function mergeSessionDayRows(store, sessionId, rows, now) {
 }
 
 /** 汇总所有会话：每天一条（含当天各 provider/model 的明细），按当前费率计价，最近的在前。 */
-function dailyStats(store, config) {
+function dailyStats(store, config, sessionFilter) {
+  /*
+   * sessionFilter 给「本会话」档用。每日库本身就是跨会话存的，但视图必须跟着范围控件走，
+   * 否则标题（本会话合计）与下面的日行（全局）会是两个永不和解的宇宙——这是本界面最大的
+   * 信任缺陷（评审 P1，已机械验证）。
+   */
+  const wanted = sessionFilter === undefined || sessionFilter === null ? null : sessionKey(sessionFilter);
   const fx = fxPerUsd(config);
   const perUsdValue = toNumber(config.currency.perUsd, 1);
   const perUsd = perUsdValue > 0 ? perUsdValue : 1;
@@ -1165,14 +1172,15 @@ function dailyStats(store, config) {
     let amount = 0;
     let tokens = 0;
     for (const row of store.days[day]) {
-      sessionIds.add(sessionKey(row.s));
+      const rowSession = sessionKey(row.s);
+      if (wanted !== null && rowSession !== wanted) continue;
+      sessionIds.add(rowSession);
       const rowProject = typeof row.w === "string" ? row.w : "";
       let projectEntry = byProject.get(rowProject);
       if (projectEntry === undefined) {
         projectEntry = { key: rowProject, tokens: 0, amount: 0, sessions: new Map() };
         byProject.set(rowProject, projectEntry);
       }
-      const rowSession = sessionKey(row.s);
       let sessionEntry = projectEntry.sessions.get(rowSession);
       if (sessionEntry === undefined) {
         sessionEntry = { key: rowSession, tokens: 0, amount: 0 };
@@ -1436,6 +1444,8 @@ function TokenPurseView({ usage, selection, t, sessionId, project, sessionsById 
   const [sparkHover, setSparkHover] = useState(null);
   const [openProject, setOpenProject] = useState(null);
   const [toneHover, setToneHover] = useState(null);
+  const scopeTabRefs = useRef({});
+  const viewTabRefs = useRef({});
   const rootRef = useRef(null);
   const closeTimer = useRef(null);
 
@@ -1512,7 +1522,7 @@ function TokenPurseView({ usage, selection, t, sessionId, project, sessionsById 
     () => rateLedger(ledger, usage, selection, config, Date.now()),
     [ledger, usage, selection, config, tick]
   );
-  const dailyRows = dailyStats(daily, config);
+  const dailyRows = dailyStats(daily, config, scope === "all" ? undefined : sessionId);
   const modelRows = sessionModelRows(ledger, usage, selection, config, Date.now());
   /* 切到「本会话」时「项目」这一档不可用，回退到第一个可见页签。 */
   const visibleTabs = TABS.filter((item) => scope === "all" || item.allOnly !== true);
@@ -1605,6 +1615,60 @@ function TokenPurseView({ usage, selection, t, sessionId, project, sessionsById 
           )
     );
   };
+
+  /*
+   * 两条分段控件长得一样，语义完全不同：范围是「模式选择」（radiogroup），
+   * 视角是「切换面板」（tablist + tabpanel）。评审指出原先两条都用 tablist，
+   * 但都没有 tabpanel，只做了半套 tabs 模式。
+   */
+  const idBase = "tp-" + String(sessionId).replace(/[^a-zA-Z0-9_-]/g, "") + "-";
+  const scopeTabId = (key) => idBase + "scope-" + key;
+  const viewTabId = (key) => idBase + "view-" + key;
+  const viewPanelId = idBase + "viewpanel";
+  const titleId = idBase + "title";
+  const panelId = idBase + "panel";
+  const fieldId = (key) => idBase + "field-" + key;
+
+  /* 方向键在组内移动并选中（radiogroup 与 tablist 都是这个行为），
+     roving tabindex 让 Tab 只停在一项上，而不是穿过整条分段控件。 */
+  const onGroupKeyDown = (event, keys, current, pick, refs) => {
+    const at = keys.indexOf(current);
+    const last = keys.length - 1;
+    let next = null;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") next = at === last ? 0 : at + 1;
+    else if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = at === 0 ? last : at - 1;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = last;
+    if (next === null || at === -1) return;
+    event.preventDefault();
+    pick(keys[next]);
+    const node = refs.current[keys[next]];
+    if (node !== undefined && typeof node.focus === "function") node.focus();
+  };
+
+  const groupButton = (key, selected, keys, pick, refs, role, id, marker, controls) => {
+    const props = {
+      key,
+      type: "button",
+      role,
+      id: id(key),
+      "aria-controls": controls,
+      tabIndex: selected ? 0 : -1,
+      className: selected ? CSS.tab + " " + CSS.tabOn : CSS.tab,
+      ref: (node) => {
+        refs.current[key] = node;
+      },
+      onClick: () => pick(key),
+      onKeyDown: (event) => onGroupKeyDown(event, keys, key, pick, refs)
+    };
+    props[marker] = selected;
+    return props;
+  };
+  const scopeKeys = SCOPES.map((item) => item.key);
+  const viewKeys = visibleTabs.map((item) => item.key);
+
+  /* 每日页签的 title 要说清它当时统计的是哪个范围。 */
+  const tabHint = (item) => t(item.key === "daily" && scope !== "all" ? "daily.hintSession" : item.hint);
 
   const sparkLast = spark.points.length - 1;
   const sparkStep = sparkLast > 0 ? (spark.points[sparkLast].x - spark.points[0].x) / sparkLast : 0;
@@ -1714,8 +1778,8 @@ function TokenPurseView({ usage, selection, t, sessionId, project, sessionsById 
         type: "button",
         className: CSS.trigger,
         "aria-label": modeText === null ? t("trigger.aria", { amount: amountText }) : t("trigger.aria", { amount: amountText }) + " · " + modeText,
-        "aria-haspopup": "dialog",
         "aria-expanded": open,
+        "aria-controls": panelId,
         onClick: () => {
           /* 退场途中再点一次视为「取消关闭」。 */
           if (closeTimer.current !== null) {
@@ -1750,11 +1814,11 @@ function TokenPurseView({ usage, selection, t, sessionId, project, sessionsById 
     open || closing
       ? h(
           "div",
-          { className: closing ? CSS.panel + " " + CSS.panelOut : CSS.panel, role: "dialog", "aria-label": t("panel.title") },
+          { className: closing ? CSS.panel + " " + CSS.panelOut : CSS.panel, id: panelId, role: "group", "aria-labelledby": titleId },
           h(
             "div",
             { className: CSS.head },
-            h("span", { className: CSS.title }, t("panel.title")),
+            h("span", { className: CSS.title, id: titleId }, t("panel.title")),
             h("span", { className: CSS.total }, "≈" + scopeAmountText)
           ),
           h(
@@ -1777,18 +1841,11 @@ function TokenPurseView({ usage, selection, t, sessionId, project, sessionsById 
           ),
           h(
             "div",
-            { className: CSS.tabs, role: "tablist", "aria-label": t("scope.label") },
+            { className: CSS.tabs, role: "radiogroup", "aria-label": t("scope.label") },
             SCOPES.map((item) =>
               h(
                 "button",
-                {
-                  key: item.key,
-                  type: "button",
-                  role: "tab",
-                  "aria-selected": scope === item.key,
-                  className: scope === item.key ? CSS.tab + " " + CSS.tabOn : CSS.tab,
-                  onClick: () => setScope(item.key)
-                },
+                groupButton(item.key, scope === item.key, scopeKeys, setScope, scopeTabRefs, "radio", scopeTabId, "aria-checked"),
                 t(item.label)
               )
             )
@@ -1832,26 +1889,18 @@ function TokenPurseView({ usage, selection, t, sessionId, project, sessionsById 
               ),
           h(
             "div",
-            { className: CSS.tabs, role: "tablist" },
+            { className: CSS.tabs, role: "tablist", "aria-label": t("tab.label") },
             visibleTabs.map((item) =>
               h(
                 "button",
-                {
-                  key: item.key,
-                  type: "button",
-                  role: "tab",
-                  "aria-selected": shownTab === item.key,
-                  className: shownTab === item.key ? CSS.tab + " " + CSS.tabOn : CSS.tab,
-                  title: t(item.hint),
-                  onClick: () => setTab(item.key)
-                },
+                { ...groupButton(item.key, shownTab === item.key, viewKeys, setTab, viewTabRefs, "tab", viewTabId, "aria-selected", viewPanelId), title: tabHint(item) },
                 t(item.label)
               )
             )
           ),
           h(
             "div",
-            { className: CSS.section + " " + CSS.sectionFlat + " " + CSS.tabBody, key: shownTab, title: t(activeTab.hint) },
+            { className: CSS.section + " " + CSS.sectionFlat + " " + CSS.tabBody, key: shownTab, title: tabHint(activeTab), role: "tabpanel", id: viewPanelId, "aria-labelledby": viewTabId(shownTab), tabIndex: 0 },
             shownTab === "project"
               ? allTime.projects.length === 0
                 ? h("div", { className: CSS.breakRow }, h("span", { className: CSS.peakLine }, t("project.empty")))
@@ -1979,6 +2028,13 @@ function TokenPurseView({ usage, selection, t, sessionId, project, sessionsById 
                             h(
                               "div",
                               { className: CSS.sparkOverlay, onMouseLeave: () => setSparkHover(null) },
+                              h(
+                                "span",
+                                { className: CSS.srOnly, role: "status", "aria-live": "polite" },
+                                sparkPoint === null
+                                  ? ""
+                                  : t("spark.tip", { day: formatDayKey(sparkPoint.day), amount: formatMoney(sparkPoint.amount, symbol) })
+                              ),
                               spark.points.map((point, index) =>
                                 h("span", {
                                   key: point.day,
@@ -2115,11 +2171,12 @@ function TokenPurseView({ usage, selection, t, sessionId, project, sessionsById 
                 h(
                   "div",
                   { className: CSS.fields },
-                  h("span", { className: CSS.fieldLabel }, t("currency.label")),
+                  h("span", { className: CSS.fieldLabel, id: fieldId("currency") }, t("currency.label")),
                   h(
                     "select",
                     {
                       className: CSS.select,
+                      "aria-labelledby": fieldId("currency"),
                       value: currencyPreset === null ? "custom" : currencyPreset.code,
                       onChange: (event) => {
                         const preset = CURRENCY_PRESETS.find((item) => item.code === event.target.value);
@@ -2286,9 +2343,11 @@ const zh = {
   "daily.toneTip": "{label} · {amount} · {tokens} · 占当天 {share}%",
   "daily.byModel": "{n} 个模型",
   "daily.hint": "按观察时刻归入当天（跨全部会话），保留最近 90 天",
+  "daily.hintSession": "按观察时刻归入当天（仅本会话），保留最近 90 天",
   "scope.session": "本会话",
   "scope.all": "累计",
   "scope.label": "统计范围",
+  "tab.label": "统计视角",
   "scope.summary": "{days} 天 · {sessions} 个会话 · {models} 个模型",
   "scope.empty": "还没有累计记录，用几个会话后这里会有数据。",
   "scope.coverage": "只统计本插件记录过的会话；安装之前、或从未打开过的会话不在其中。",
@@ -2356,9 +2415,11 @@ const en = {
   "daily.toneTip": "{label} · {amount} · {tokens} · {share}% of the day",
   "daily.byModel": "{n} models",
   "daily.hint": "Bucketed by observation time across all sessions, last 90 days kept",
+  "daily.hintSession": "Bucketed by observation time for this session only, last 90 days kept",
   "scope.session": "Session",
   "scope.all": "All time",
   "scope.label": "Scope",
+  "tab.label": "View",
   "scope.summary": "{days} days · {sessions} sessions · {models} models",
   "scope.empty": "No accumulated records yet — this fills in after a few sessions.",
   "scope.coverage": "Only sessions this plugin has recorded are counted — sessions never opened, or from before it was installed, are not included.",
