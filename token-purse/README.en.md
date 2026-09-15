@@ -302,7 +302,9 @@ The bottom of the panel lists the last few days' tokens and spend (up to 7):
   edges the callout pulls itself in so it never overflows the panel. With a fresh install there
   are few points, so the line looks flat — that is expected until a few weeks of data accumulate.
 - **Open a day for the detail**: a **colour bar** comes first — each session of that day owns one
-  segment, sized by its share of the day. Below it the sessions are listed **by session** (each
+  segment, sized by its share of the day. **Hovering a segment** shows a bubble with the session,
+  amount, tokens and share of that day (the hit area is taller than the 6px bar so it is easy to
+  hit, and the bubble pulls itself in at the edges). Below it the sessions are listed **by session** (each
   with a matching colour swatch, labelled with the session title where available and a tooltip
   giving the project path and session id), then **by model**. The first session of a day is blue,
   then green / amber / red / deep blue / grey, wrapping after six. The colours come from static
@@ -392,6 +394,18 @@ otherwise refresh the page.
 
 ## Changelog
 
+- **0.1.17**: the colour bar is now **hoverable** — pointing at a segment shows a bubble with the
+  session, amount, tokens and that day's share. The hit area is a 14px transparent layer over the
+  6px bar (easier to hit than the bar itself), positioned from the same percentages that drive
+  flexGrow, so the zones line up with the visible blocks; the bubble pulls itself in at the edges.
+  With nothing hovered only the hit zones render, no bubble.
+- **0.1.16**: fixed the **sparkline area rendering black**. Its fill referenced
+  --dsw-alias-fill-l2, which **does not exist** in the theme — in a background position the failure
+  is merely transparent, but in a fill position fill is inherited, so the invalid value falls back
+  to the inherited/initial **black** and the daily chart drew a solid black wedge. Now uses the real
+  --dsw-alias-label-tertiary with fill-opacity:.16. Two other missing tokens (--dsw-font-mono,
+  --dsw-static-yellow-500) remain but are harmless: they either carry a fallback or degrade to
+  invisible.
 - **0.1.15**: opening a day in **Daily** now leads with that day's **sessions**: a **colour bar**
   splits the day into one segment per session, sized by share, and the rows below list **by
   session** (each with its colour swatch) and then **by model**. Session labels use the session
