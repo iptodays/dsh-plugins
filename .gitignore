@@ -141,3 +141,7 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# impeccable 产物（build/ review/ mocks/ critique/）：这个工具把中间产物写进项目树，
+# 它们不属于源码。
+.impeccable/
