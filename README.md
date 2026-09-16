@@ -1,31 +1,30 @@
 # dsh-plugins
 
-自用的 DSH Web 客户端插件集合。每个子目录是一个独立、零依赖的插件包，可以直接装进 DSH profile。
+自用的 DSH Web 客户端插件集合。每个子目录是一个独立、零依赖的插件包。
 
 ## 插件
 
-| 插件 | 版本 | 说明 |
-| --- | --- | --- |
-| [token-purse](./token-purse) · 鲸囊 | 0.2.0 | 把会话累计消耗的 token 折算成大致现金，挂在输入框下方的统计行上。点开有四桶明细、本会话 / 累计 / 项目三种范围，以及模型 / 峰谷 / 每日三种拆分。费率是 JSON 配置（带配置校验），按 provider/model 区分；分时方案可按平台或模型三层继承，加价与折扣两种方向都支持；币种与自动汇率、跨会话每日账本 |
+- **[token-purse](./token-purse) · 鲸囊** — 把会话累计消耗的 token 折算成大致现金，挂在
+  输入框下方的统计行上；点开可看四桶明细，以及本会话 / 累计 / 项目三种范围下的
+  模型 / 峰谷 / 每日三种拆分。
+
+界面、费率配置、已知限制、版本与更新记录都在各插件自己的 README 里，本页不复述——
+免得两处一起漂移。
 
 ## 安装
 
-以 `token-purse` 为例：
+完整说明见 [token-purse 的「安装」](./token-purse#安装)。摘要：
 
-    dsh plugin --profile web add file:/绝对路径/dsh-plugins/token-purse
+    # 从 GitHub 装（推荐）。仓库根不是包，path: 不能省；# 和 & 记得整体加引号，
+    # committish 必须是完整的 40 位 SHA（短 SHA 会被当成 ref 名而解析失败）
+    dsh plugin --profile web add "github:iptodays/dsh-plugins#<完整 SHA>&path:token-purse"
 
-再把下面这段插进 `$DSH_HOME/profiles/web/cordis.patch.yml` 的顶层数组：
+    # 改这个插件本身时，从本地目录装
+    dsh plugin --profile web add file:/path/to/dsh-plugins/token-purse
 
-    - insert:
-        - id: ui-token-purse
-          name: '@dsh-plugins/token-purse'
-
-web profile 的 `patchReload` 是 live，保存后刷新页面即可。各插件的配置项、计费方式与已知限制见其自身 README。
-
-## 目录
-
-    dsh-plugins/
-      token-purse/    TokenPurse（鲸囊）· 会话 token 折算现金
+再把插件目录里的 **cordis.patch.yml** 内容并进
+`$DSH_HOME/profiles/web/cordis.patch.yml` 的顶层数组。该 profile 的 patchReload 是
+live，改完 patch 会自动重载；浏览器刷新一次，随便发一条消息即可看到底部统计行。
 
 ## 开发
 
