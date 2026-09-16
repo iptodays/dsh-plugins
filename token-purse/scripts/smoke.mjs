@@ -111,7 +111,7 @@ function loadInternals(react, now, extra) {
   const sandbox = makeSandbox(react, extra, now);
   const source =
     readFileSync(join(root, "src", "client.js"), "utf8") +
-    "\nexports.__test = { rateUsage, rateLedger, resolveRates, mergeConfig, formatMoney, formatTokens, formatRate, DEFAULT_CONFIG, TokenPurseView, matchCurrencyPreset, findCurrencyPreset, fetchUsdRate, parsePeakWindow, parsePeak, isPeakAt, ratesAt, emptyLedger, syncLedger, migrateConfigV1, rateSource, CURRENCY_PRESETS, localDayKey, sessionModelRows, formatModelLabel, sharePercent, legacyCurrencyConfig, migrateLegacyCurrency, readConfig, dailySeries, sparklinePoints, sparklineLine, sparklineArea, SPARK_DAYS, aggregateDaily, sessionTone, SESSION_TONES, splitByPeak, ledgerSegments, priceSegment, normalizePeakFlag, sessionDayRows, mergeSessionDayRows, dailyStats, normalizeDaily, emptyDaily, formatDayKey, withModelRate };\n";
+    "\nexports.__test = { rateUsage, rateLedger, resolveRates, mergeConfig, formatMoney, formatTokens, formatRate, DEFAULT_CONFIG, TokenPurseView, matchCurrencyPreset, findCurrencyPreset, fetchUsdRate, parsePeakWindow, parsePeak, isPeakAt, ratesAt, emptyLedger, syncLedger, migrateConfigV1, rateSource, CURRENCY_PRESETS, localDayKey, sessionModelRows, formatModelLabel, sharePercent, legacyCurrencyConfig, migrateLegacyCurrency, readConfig, dailySeries, sparklinePoints, sparklineLine, sparklineArea, SPARK_DAYS, aggregateDaily, sessionTone, SESSION_TONES, splitByPeak, ledgerSegments, priceSegment, normalizePeakFlag, sessionDayRows, mergeSessionDayRows, dailyStats, normalizeDaily, emptyDaily, formatDayKey };\n";
   vm.runInContext(source, sandbox);
   return sandbox.exports.__test;
 }
@@ -568,16 +568,42 @@ const usedCssNames = [...new Set([...cssSource.matchAll(/CSS\.([A-Za-z0-9_]+)/g)
 const mappedCssNames = new Set([...cssSource.matchAll(/^\s+([A-Za-z0-9_]+):\s*"TPurse_/gm)].map((m) => m[1]));
 const unmappedCssNames = usedCssNames.filter((key) => !mappedCssNames.has(key));
 check("every CSS.<name> reference has a class mapping", unmappedCssNames.length === 0, unmappedCssNames.join(", "));
-/* 费率表踩过一次：轨道是 52px、输入框却固定 76px，四个框互相重叠并溢出面板。 */
-const rateTableInputRule = /\.TPurse_rateTable \.TPurse_rateInput\{([^}]*)\}/.exec(cssSource);
-check(
-  "rate-table inputs are fluid inside their tracks",
-  rateTableInputRule !== null && rateTableInputRule[1].indexOf("width:100%") !== -1 && rateTableInputRule[1].indexOf("min-width:0") !== -1
+/* 护栏：声明了 width:100% 又自带 padding / border 的控件，如果没写 box-sizing:border-box，
+   实际渲染宽度就是「容器 + padding + border」。费率表两版都栽在这里——先是被固定 76px
+   压过 52px 的轨道，改成流式后仍比 71px 的轨道宽 12px，于是继续重叠。
+   所以这里按「选择器」而不是按「规则」配对：padding 和 box-sizing 可以写在同一条
+   class 的不同规则里。 */
+const ZERO_LENGTH = /^0(?:px|em|rem|%)$/;
+const hasHorizontalPadding = (body) => {
+  if (/(^|;)\s*padding-(left|right)\s*:\s*[^;]*[1-9]/.test(body)) return true;
+  const shorthand = /(^|;)\s*padding\s*:\s*([^;]+)/.exec(body);
+  if (shorthand === null) return false;
+  const parts = shorthand[2].trim().split(/\s+/);
+  /* padding: a | a b | a b c | a b c d —— 横向值是 a、b、b、d */
+  const horizontal = parts.length === 1 ? parts[0] : parts.length === 4 ? parts[3] : parts[1];
+  return horizontal !== "0" && !ZERO_LENGTH.test(horizontal);
+};
+/* border:0 / border:none 不占宽度，别把它们算进去。 */
+const hasVisibleBorder = (body) => /(^|;)\s*border(?:-(?:top|right|bottom|left))?\s*:\s*(?!0(?:px)?\s*(?:;|$)|none)/.test(body);
+const cssBlocks = [...cssSource.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: m[1], body: m[2] }));
+const classesWith = (predicate) => {
+  const found = new Set();
+  for (const block of cssBlocks) {
+    if (!predicate(block.body)) continue;
+    for (const cls of block.sel.match(/\.[A-Za-z0-9_]+/g) || []) found.add(cls);
+  }
+  return found;
+};
+const borderBoxed = classesWith((body) => body.indexOf("box-sizing:border-box") !== -1);
+/* 只匹配 width，不匹配 max-width：后者不构成同一个问题。 */
+const fluidBoxes = classesWith(
+  (body) => /(^|;)\s*width:100%/.test(body) && (hasHorizontalPadding(body) || hasVisibleBorder(body))
 );
+const unbalancedBoxes = [...fluidBoxes].filter((cls) => !borderBoxed.has(cls));
 check(
-  "rate rows are fluid and long model keys cannot push them out",
-  /\.TPurse_rateRow\{[^}]*grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/.test(cssSource) &&
-    /\.TPurse_rateKey\{[^}]*min-width:0/.test(cssSource)
+  "every fluid control accounts for its own padding and border",
+  fluidBoxes.size > 0 && unbalancedBoxes.length === 0,
+  unbalancedBoxes.join(", ")
 );
 check(
   "css ships entrance / reveal keyframes",
@@ -749,16 +775,15 @@ const RATE_DRAFT = JSON.stringify({
 /* 直接注入 editing 会跳过 beginEdit，所以草稿也要一起给。 */
 react.seed({ 1: true, 2: "model", 4: true, 5: RATE_DRAFT });
 const editingSerialized = JSON.stringify(modelInternals.TokenPurseView({ usage, selection, t }));
-/* 评审 P2：原来只有一大块 JSON textarea。现在常用字段是结构化表格，
-   原始 JSON 退到「高级 JSON」后面。 */
+/* 结构化费率表试过一版：320px 的面板里 4 个数字框 + 一列模型名，两版都放不下，
+   按用户决定回退成「只有 JSON 配置」。 */
 check(
-  "editor holds the currency settings and a structured rate table",
+  "editor holds the currency settings and the JSON, nothing cleverer",
   editingSerialized.indexOf("TPurse_select") !== -1 &&
     editingSerialized.indexOf("TPurse_fxRow") !== -1 &&
-    editingSerialized.indexOf("TPurse_rateTable") !== -1 &&
-    editingSerialized.indexOf("packyapi/deepseek-flash") !== -1 &&
-    editingSerialized.indexOf("TPurse_textarea") === -1 &&
-    editingSerialized.indexOf("rates.jsonShow") !== -1
+    editingSerialized.indexOf("TPurse_textarea") !== -1 &&
+    editingSerialized.indexOf("TPurse_rateTable") === -1 &&
+    editingSerialized.indexOf("TPurse_rateKey") === -1
 );
 check(
   "the editor offers cancel, and clearing is not one click away",
@@ -766,33 +791,8 @@ check(
 );
 react.reset();
 react.seed({ 1: true, 2: "model", 4: true, 21: true });
-const jsonOpenSerialized = JSON.stringify(modelInternals.TokenPurseView({ usage, selection, t }));
-check(
-  "the raw JSON is one disclosure away",
-  jsonOpenSerialized.indexOf("TPurse_textarea") !== -1 && jsonOpenSerialized.indexOf("rates.jsonHide") !== -1
-);
-react.reset();
-react.seed({ 1: true, 2: "model", 4: true, 22: true });
 const confirmResetSerialized = JSON.stringify(modelInternals.TokenPurseView({ usage, selection, t }));
 check("clearing the config asks for confirmation", confirmResetSerialized.indexOf("rates.resetConfirm") !== -1);
-/* 表格回写草稿是这段改动里唯一有真实副作用的地方，单独测一遍。 */
-const rateBefore = { models: { a: { input: 1, cacheRead: 0.1, cacheWrite: 1, output: 4 } }, peak: { multiplier: 2 } };
-const rateAfter = JSON.parse(internals.withModelRate(JSON.parse(JSON.stringify(rateBefore)), "a", "input", "2.5"));
-check(
-  "editing one rate changes only that field",
-  rateAfter.models.a.input === 2.5 &&
-    rateAfter.models.a.output === 4 &&
-    rateAfter.models.a.cacheRead === 0.1 &&
-    rateAfter.peak.multiplier === 2
-);
-check(
-  "clearing a rate field stays empty instead of becoming 0",
-  JSON.parse(internals.withModelRate(JSON.parse(JSON.stringify(rateBefore)), "a", "output", "")).models.a.output === ""
-);
-check(
-  "the rewrite is still valid, pretty-printed JSON",
-  internals.withModelRate(JSON.parse(JSON.stringify(rateBefore)), "a", "input", "3").indexOf("\n  ") !== -1
-);
 react.reset();
 react.seed({ 1: true, 2: "model", 4: true });
 

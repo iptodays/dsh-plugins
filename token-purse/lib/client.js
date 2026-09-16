@@ -159,7 +159,7 @@ window.__ModuleLoader__.load({
 
 		const CSS_TEXT =
 		  ".TPurse_root{position:relative;display:inline-flex;align-items:center}" +
-		  ".TPurse_srOnly{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.TPurse_jsonToggle{margin-top:8px}.TPurse_rateTable{display:flex;flex-direction:column;gap:6px;margin-top:8px}.TPurse_rateRow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;align-items:center}.TPurse_rateHead{margin-bottom:1px}.TPurse_rateKey{grid-column:1/-1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary);font-family:var(--dsw-font-markdown-code-font-family);font-size:10px}.TPurse_rateFieldLabel{min-width:0;color:var(--dsw-alias-label-secondary);font-size:9px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.TPurse_rateTable .TPurse_rateInput{width:100%;min-width:0;text-align:right}.TPurse_trigger{display:inline-flex;align-items:center;gap:3px;height:28px;min-height:24px;padding:0 8px;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px;cursor:pointer;font-variant-numeric:tabular-nums;transition:background-color .14s ease,color .14s ease}" +
+		  ".TPurse_srOnly{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.TPurse_trigger{display:inline-flex;align-items:center;gap:3px;height:28px;min-height:24px;padding:0 8px;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px;cursor:pointer;font-variant-numeric:tabular-nums;transition:background-color .14s ease,color .14s ease}" +
 		  ".TPurse_trigger:hover,.TPurse_trigger:focus-visible{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}" +
 		  ".TPurse_approx{opacity:.75}" +
 		  ".TPurse_amount{font-weight:500;color:var(--dsw-alias-label-secondary)}" +
@@ -196,7 +196,7 @@ window.__ModuleLoader__.load({
 		  "[data-composer-stats] .TPurse_amount{font-weight:400}" +
 		  ".TPurse_fields{display:grid;grid-template-columns:max-content minmax(0,1fr);align-items:center;gap:6px 10px;margin-top:12px;padding-top:10px;border-top:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);font-size:11px}" +
 		  ".TPurse_fieldLabel{white-space:nowrap}" +
-		  ".TPurse_select,.TPurse_rateInput{min-height:24px;font:inherit;font-size:11px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-interactive-bg-hover);border:1px solid var(--dsw-alias-border-l1);border-radius:6px;padding:2px 5px}" +
+		  ".TPurse_select,.TPurse_rateInput{box-sizing:border-box;min-height:24px;font:inherit;font-size:11px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-interactive-bg-hover);border:1px solid var(--dsw-alias-border-l1);border-radius:6px;padding:2px 5px}" +
 		  ".TPurse_select{width:100%;max-width:160px;min-width:0}" +
 		  ".TPurse_rateInput{width:76px;text-align:right;font-family:var(--dsw-font-markdown-code-font-family);font-variant-numeric:tabular-nums}" +
 		  ".TPurse_fxRow{display:flex;align-items:center;gap:10px;margin-top:8px;color:var(--dsw-alias-label-secondary);font-size:11px}" +
@@ -325,12 +325,6 @@ window.__ModuleLoader__.load({
 		  toneTip: "TPurse_toneTip",
 		  toneTipText: "TPurse_toneTipText",
 		  srOnly: "TPurse_srOnly",
-		  jsonToggle: "TPurse_jsonToggle",
-		  rateTable: "TPurse_rateTable",
-		  rateRow: "TPurse_rateRow",
-		  rateHead: "TPurse_rateHead",
-		  rateKey: "TPurse_rateKey",
-		  rateFieldLabel: "TPurse_rateFieldLabel",
 		  toneSeg: "TPurse_toneSeg",
 		  toneDot: "TPurse_toneDot",
 		  toneHead: "TPurse_toneHead",
@@ -512,18 +506,6 @@ window.__ModuleLoader__.load({
 		    auto
 		  };
 		  return parsed;
-		}
-
-		const RATE_FIELDS = ["input", "cacheRead", "cacheWrite", "output"];
-
-		/*
-		 * 结构化费率表改一条记录，然后把整份配置重新序列化回草稿。
-		 * 保存路径仍然只有 saveEdit 一条——表格只是让草稿更好写，不碰写入逻辑。
-		 */
-		function withModelRate(parsed, key, field, raw) {
-		  const models = Object.assign({}, parsed.models);
-		  models[key] = Object.assign({}, models[key], { [field]: raw === "" ? "" : Number(raw) });
-		  return JSON.stringify(Object.assign({}, parsed, { models }), null, 2);
 		}
 
 		function readConfig() {
@@ -1477,7 +1459,6 @@ window.__ModuleLoader__.load({
 		  const rootRef = useRef(null);
 		  const closeTimer = useRef(null);
 		  /* 后加的状态统一放末尾：测试按序号注入，中间插入会错位。 */
-		  const [showJson, setShowJson] = useState(false);
 		  const [confirmReset, setConfirmReset] = useState(false);
 		  const [perUsdIssue, setPerUsdIssue] = useState(false);
 
@@ -1733,7 +1714,6 @@ window.__ModuleLoader__.load({
 		    setInvalid(false);
 		    setConfirmReset(false);
 		    setPerUsdIssue(false);
-		    setShowJson(false);
 		  };
 		  const saveEdit = () => {
 		    let parsed;
@@ -1812,13 +1792,7 @@ window.__ModuleLoader__.load({
 		        ? t("peak.high", { factor: peakInfo.multiplier })
 		        : t("peak.low");
 
-		  /* 草稿能解析时，把常用费率摊成输入框；解析失败则只保留高级 JSON 与报错。 */
-		  let draftConfig = null;
-		  try {
-		    draftConfig = JSON.parse(draft);
-		  } catch (draftParseError) {
-		    draftConfig = null;
-		  }
+		  /* 出错时把 V8 的解析位置一并带出来，省得对着整份 JSON 找逗号。 */
 		  let draftError = null;
 		  if (invalid) {
 		    try {
@@ -2311,57 +2285,13 @@ window.__ModuleLoader__.load({
 		                ),
 		                fxNote !== null ? h("div", { className: CSS.fxNote }, fxNote) : null,
 		                perUsdIssue ? h("div", { className: CSS.error }, t("currency.perUsdInvalid")) : null,
-		                draftConfig === null || draftConfig.models === undefined
-		                  ? null
-		                  : h(
-		                      "div",
-		                      { className: CSS.rateTable },
-		                      h(
-		                        "div",
-		                        { className: CSS.rateRow + " " + CSS.rateHead },
-		                        RATE_FIELDS.map((field) =>
-		                          h("span", { className: CSS.rateFieldLabel, key: field }, t("rates.field." + field))
-		                        )
-		                      ),
-		                      Object.keys(draftConfig.models).map((key) =>
-		                        h(
-		                          "div",
-		                          { className: CSS.rateRow, key },
-		                          h("span", { className: CSS.rateKey, title: key }, key),
-		                          RATE_FIELDS.map((field) =>
-		                            h("input", {
-		                              key: field,
-		                              className: CSS.rateInput,
-		                              type: "number",
-		                              min: "0",
-		                              step: "0.01",
-		                              value: draftConfig.models[key][field] === undefined ? "" : String(draftConfig.models[key][field]),
-		                              "aria-label": key + " " + t("rates.field." + field),
-		                              onChange: (event) => setDraft(withModelRate(draftConfig, key, field, event.target.value))
-		                            })
-		                          )
-		                        )
-		                      )
-		                    ),
-		                h(
-		                  "button",
-		                  {
-		                    type: "button",
-		                    className: CSS.ghost + " " + CSS.jsonToggle,
-		                    "aria-expanded": showJson,
-		                    onClick: () => setShowJson(!showJson)
-		                  },
-		                  showJson ? t("rates.jsonHide") : t("rates.jsonShow")
-		                ),
-		                showJson
-		                  ? h("textarea", {
-		                      className: CSS.textarea,
-		                      value: draft,
-		                      spellCheck: false,
-		                      "aria-label": t("rates.hint"),
-		                      onChange: (event) => setDraft(event.target.value)
-		                    })
-		                  : null,
+		                h("textarea", {
+		                  className: CSS.textarea,
+		                  value: draft,
+		                  spellCheck: false,
+		                  "aria-label": t("rates.hint"),
+		                  onChange: (event) => setDraft(event.target.value)
+		                }),
 		                h("div", { className: CSS.hint }, t("rates.hint")),
 		                invalid
 		                  ? h("div", { className: CSS.error }, t("rates.invalid") + (draftError === null ? "" : "（" + draftError + "）"))
@@ -2461,12 +2391,6 @@ window.__ModuleLoader__.load({
 		  "bucket.cacheWrite": "缓存写入",
 		  "bucket.output": "输出",
 		  "rates.edit": "调整费率",
-		  "rates.field.input": "输入",
-		  "rates.field.cacheRead": "缓存读",
-		  "rates.field.cacheWrite": "缓存写",
-		  "rates.field.output": "输出",
-		  "rates.jsonShow": "高级 JSON",
-		  "rates.jsonHide": "收起 JSON",
 		  "rates.cancel": "取消",
 		  "rates.resetConfirm": "再按一次清空",
 		  "currency.perUsdInvalid": "汇率必须是大于 0 的数字，改动未保存。",
@@ -2542,12 +2466,6 @@ window.__ModuleLoader__.load({
 		  "bucket.cacheWrite": "Cache write",
 		  "bucket.output": "Output",
 		  "rates.edit": "Edit rates",
-		  "rates.field.input": "in",
-		  "rates.field.cacheRead": "c-read",
-		  "rates.field.cacheWrite": "c-write",
-		  "rates.field.output": "out",
-		  "rates.jsonShow": "Advanced JSON",
-		  "rates.jsonHide": "Hide JSON",
 		  "rates.cancel": "Cancel",
 		  "rates.resetConfirm": "Click again to clear",
 		  "currency.perUsdInvalid": "The exchange rate must be a number greater than 0 — nothing was saved.",

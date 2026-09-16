@@ -16,9 +16,8 @@ output), their token counts and subtotals, plus an inline rate editor.
 
 - Idle: a compact **≈$0.0123** badge; the **≈** marks it as an estimate.
 - Click: a dropdown listing each bucket, the priced model and the total token count.
-- Bottom of the panel: **Edit rates** — the currency / FX rows plus a **rate table with
-  one row per provider/model** (edit the numbers directly); the raw JSON sits behind
-  **Advanced JSON**. Stored in the browser's localStorage.
+- Bottom of the panel: **Edit rates** — the currency / FX rows plus a **JSON** block that
+  overrides the rates. Stored in the browser's localStorage.
 - Nothing renders until the session has billed at least one token, so an empty
   session stays clean.
 
@@ -200,10 +199,8 @@ instead of pretending to be exact.
 
 Override either way:
 
-1. **Recommended**: open the badge → **Edit rates**, change the numbers in the rate table
-   and save; expand **Advanced JSON** when you need fields the table does not cover (such
-   as **peak** or **fx**). Stored under the **dsh.token-purse.config.v2** localStorage key
-   (v1 migrates on read).
+1. **Recommended**: open the badge → **Edit rates**, edit the JSON, save. Stored under the
+   **dsh.token-purse.config.v2** localStorage key (v1 migrates on read).
 2. Edit **DEFAULT_MODELS** / **FALLBACK_RATES** at the top of **src/client.js**,
    then run **npm run build**.
 
@@ -397,22 +394,21 @@ otherwise refresh the page.
 
 ## Changelog
 
-- **0.1.21**: fixed the **rate table overflowing**. 0.1.20 built it as "1fr + four 52px
-  columns" while the inputs kept their fixed 76px width — 24px wider than their track, so the
-  four number boxes **overlapped each other** and overflowed the panel (whose overflow-x:hidden
-  simply clipped the right side); the key's 1fr track also lacked min-width:0, and nowrap made
-  its minimum width the full string (37 characters, ~222px), for a row ~442px wide inside a
-  296px content box. The key now has its own line and the four columns are fluid, with inputs at
-  width:100%; the duplicate caption above the column labels is gone.
-- **0.1.20**: cut the **standing prose** and rebuilt the **rate editor**, both per the critique.
+- **0.1.22**: rate editing went **back to JSON only** — a structured table (one row per
+  provider/model plus four number inputs) does not fit a 320px panel. The first attempt put fixed
+  76px inputs on 52px tracks; switching to fluid inputs **still overlapped**, because box-sizing
+  is not inherited and width:100% plus padding and border renders 12px wider than its track under
+  content-box. Both were tried; this space only fits JSON. The rest of the editor work stays:
+  Cancel, a two-click Reset, a >0 exchange-rate check, and JSON errors with their parse position.
+  New guard: any control declaring width:100% with horizontal padding or a border must also set
+  box-sizing:border-box.
+- **0.1.21**: fixed the rate table overflowing (**reverted by 0.1.22**, kept for the record).
+- **0.1.20**: cut the **standing prose** and improved the **rate editor**.
   - The coverage caveat dropped from a 42px paragraph to a 10px footnote under the total,
     minus the part that duplicated the subtitle; "estimate, not a bill" moved into the
     total's **title**.
   - The peak window and multiplier moved into the **Peak** tab (the trigger's tooltip already
     carried them) instead of sitting in every view.
-  - **Edit rates** is no longer just a JSON box: common fields became a **table with one row
-    per provider/model** (input / cache read / cache write / output), and the raw JSON moved
-    behind **Advanced JSON**.
   - Added **Cancel** — the only ways out used to be Save or Reset, so abandoning an edit meant
     wiping the config; **Reset** now needs two clicks; an exchange rate of ≤ 0 reports an error
     instead of silently becoming 1; JSON errors include the parse position.
