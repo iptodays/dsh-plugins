@@ -149,21 +149,22 @@ localStorage** 再写回，所以旧页面不会把它没见过的会话记录�
 内置费率来自两个**可溯源**的来源，单位是**人民币 / 百万 token**；每条费率自带
 **currency**（默认 CNY）：
 
-    # DeepSeek 官方
-    deepseek-official/deepseek-flash            input 1.00   cacheRead 0.020   cacheWrite 1.00   output 4.00    peakMultiplier 2
-    deepseek-official/deepseek-v4-flash         input 1.00   cacheRead 0.020   cacheWrite 1.00   output 4.00    peakMultiplier 2
-    deepseek-official/deepseek-v4-pro           input 4.50   cacheRead 0.150   cacheWrite 4.50   output 13.50   peakMultiplier 2
+    # DeepSeek 官方                          input   cacheRead   cacheWrite   output
+    deepseek-official/deepseek-flash          1.00    0.020       1.00         4.00
+    deepseek-official/deepseek-v4-flash       1.00    0.020       1.00         4.00
+    deepseek-official/deepseek-v4-pro         4.50    0.150       4.50        13.50
 
-    # packyapi（官方价 × 分组倍率）
-    packyapi/deepseek-flash             8折    input 0.80   cacheRead 0.016   cacheWrite 0.80   output 3.20    peakMultiplier 2
-    packyapi/deepseek-v4-flash-vision-exp 8折   input 0.80   cacheRead 0.016   cacheWrite 0.80   output 3.20    peakMultiplier 2
-    packyapi/deepseek-v4-flash          5折    input 0.50   cacheRead 0.010   cacheWrite 0.50   output 2.00    peakMultiplier 2
-    packyapi/deepseek-v4-pro            5折    input 2.25   cacheRead 0.075   cacheWrite 2.25   output 6.75    peakMultiplier 2
+    # packyapi（官方价 × 分组倍率）  分组
+    packyapi/deepseek-flash               8折   0.80    0.016       0.80         3.20
+    packyapi/deepseek-v4-flash-vision-exp 8折   0.80    0.016       0.80         3.20
+    packyapi/deepseek-v4-flash            5折   0.50    0.010       0.50         2.00
+    packyapi/deepseek-v4-pro              5折   2.25    0.075       2.25         6.75
 
 - **deepseek-official** 是 DeepSeek 官方价（api-docs.deepseek.com/zh-cn/quick_start/pricing）。
 - **packyapi** 按官方人民币价打折：deepseek-officially 组 8 折、deepseek-sale 组 5 折。
   它页面用 `$` 符号显示，但数值就是官方「元」价 × 倍率（如 v4-pro 官方 ¥4.5 → 页面 $2.25），实际按人民币计。
-- 官方高峰 = 空闲 ×2，时段为北京时间周一至周五 09:00–12:00、14:00–18:00。
+- 两个平台目前都是「高峰 = 空闲 ×2」，时段为北京时间周一至周五 09:00–12:00、14:00–18:00。
+  倍率写在 **providers** 段里（见下），不必每条模型重复；时段、时区和方向都可以按平台或按模型改。
 - 官方已把 `deepseek-v4-flash` / `-vision-exp` 的请求转由 V4.1-Flash 提供服务并按 Flash 计费；
   `deepseek-v4-pro` 计划 2026-09-14 12:00 后同样路由到 V4.1-Flash。
 - 表里没有的模型（例如 packyapi 的其它分组）显示**未配置**，不猜价。
@@ -180,7 +181,7 @@ deepseek-official 就是两个价。所以费率 key 支持 **provider/model**�
 两种覆盖方式：
 
 1. **推荐**：点开徽标 → **调整费率**，改 JSON 后保存。配置存在浏览器
-   localStorage 的 **dsh.token-purse.config.v2** 键下（自动从旧 v1 迁移）。
+   localStorage 的 **dsh.token-purse.config.v3** 键下（自动从 v2 / v1 迁移）。
 2. 直接改 **src/client.js** 顶部的 **DEFAULT_MODELS** / **FALLBACK_RATES**，
    然后执行 **npm run build**。
 
@@ -193,9 +194,17 @@ deepseek-official 就是两个价。所以费率 key 支持 **provider/model**�
         "timezone": "Asia/Shanghai",
         "windows": ["Mon-Fri 09:00-12:00", "Mon-Fri 14:00-18:00"]
       },
+      "providers": {
+        "packyapi": { "peak": { "mode": "surcharge", "multiplier": 2 } },
+        "deepseek-official": { "peak": { "mode": "surcharge", "multiplier": 2 } }
+      },
       "models": {
-        "packyapi/deepseek-flash": { "currency": "CNY", "input": 0.80, "cacheRead": 0.016, "cacheWrite": 0.80, "output": 3.20, "peakMultiplier": 2 },
-        "deepseek-official/deepseek-flash": { "currency": "CNY", "input": 1, "cacheRead": 0.02, "cacheWrite": 1, "output": 4, "peakMultiplier": 2 },
+        "packyapi/deepseek-flash": { "currency": "CNY", "input": 0.80, "cacheRead": 0.016, "cacheWrite": 0.80, "output": 3.20 },
+        "some-gateway/night-model": {
+          "currency": "CNY", "input": 1, "output": 4,
+          "peak": { "mode": "discount", "multiplier": 0.25, "windows": ["Mon-Sun 00:30-08:30"] }
+        },
+        "flat-model": { "currency": "CNY", "input": 0.5, "output": 1, "peak": false },
         "my-usd-model": { "currency": "USD", "input": 0.1, "output": 0.2 }
       }
     }
@@ -207,42 +216,81 @@ deepseek-official 就是两个价。所以费率 key 支持 **provider/model**�
   显示币种本身以 **currency.perUsd** 为准。只写人民币费率时基本不用管它。
 - **peak.timezone**：IANA 时区名，如 **Asia/Shanghai**；**peak.windows** 是
   「星期 起-止」列表，支持 **Mon-Fri**、**Sat,Sun**、**\***。解析不了的项直接
-  忽略，全部无效就等于不分时。
+  忽略，全部无效就等于不分时。**顶层 peak 只是默认时段**，它自己不会让任何条目
+  变成分时计费——那需要一条倍率。
+- **providers**：平台级分时方案。键是 provider id（和 settings.yaml 里一致），
+  值形如 **{ "peak": { "mode": ..., "multiplier": ... } }**；时区与时段可以省略，
+  省略即继承顶层。同平台多个模型价格一样时，写在这里比每条重复更清楚。
+- **models[].peak** 有三态：**缺省**（继承 provider / 顶层）、**false**（显式不分时，
+  不再继承）、**对象**（自己的方案，字段仍可继承）。
 - **models**：键可以写 **provider/model**（推荐）或只写模型 id，都小写。匹配
   顺序为「provider/model 精确 → model 精确 → model 子串（取最长）→ 兜底」；
   provider 前缀的键不参与子串匹配。所以 **deepseek-v4-flash-exp** 会命中
   **deepseek-v4-flash**（没有更精确的条目时）。
 - **models[].currency**：该条费率用什么币种计价（默认 CNY）。不同 provider 用不同
   币种时，插件先按 **fx** 折成美元、再乘 **currency.perUsd** 显示。
-- 单条费率里 **cacheRead / cacheWrite** 省略时按 **input** 计；
-  **peakMultiplier** 省略或 ≤ 1 表示该模型不分时。
+- 单条费率里 **cacheRead / cacheWrite** 省略时按 **input** 计。
+- **peak.mode**：**surcharge**（窗口内加价，倍率必须 **> 1**）或 **discount**
+  （窗口内打折，倍率必须在 **0 与 1 之间**）。倍率一律作用在**窗口内**，
+  mode 只决定方向，以及界面上叫「高峰 / 低峰」还是「优惠 / 标准价」。
+- **peak.multiplier**：标量，或四个桶都给全的对象
+  （**{ "input": 2, "cacheRead": 1, "cacheWrite": 2, "output": 4 }**）。
+  缺桶会**报错**而不是静默按 1——静默的默认值就是在算错钱。
+- 旧版的 **peakMultiplier** 仍然兼容：**≠1** 等价于一个 surcharge 方案，
+  **= 1** 等价于不分时。
+- 编辑器会在 JSON 下方列出**配置问题**（路径 + 原因）。非法值仍然有默认行为兜底，
+  但不会再有「看起来生效了其实没有」——0.1.x 把 **peakMultiplier: 0.5** 静默夹成 1
+  就是这类坑。
 
 ### 分时计价（peak）
 
-DeepSeek 官方（以及走官方渠道的 packyapi）都是：工作日 **09:00–12:00**、
-**14:00–18:00**（Asia/Shanghai）单价是空闲时段的两倍。开启方式：给模型加
-**peakMultiplier**，再在顶层 **peak.windows** 写时段。
+DeepSeek 官方（以及走官方渠道的 packyapi）目前都是：工作日 **09:00–12:00**、
+**14:00–18:00**（Asia/Shanghai）单价是空闲时段的两倍。
 
-- 时段按 **peak.timezone** 判断，与你的系统时区无关；区间是**左闭右开**
+方案是**可继承**的，落在三层：**模型条目 → providers[平台] → 顶层 peak**，
+字段级回落。常见形态是「平台定时段与倍率，个别模型例外」：
+
+    "providers": {
+      "packyapi": { "peak": { "mode": "surcharge", "multiplier": 2 } }
+    },
+    "models": {
+      "night-gateway/night-model": {
+        "input": 1, "output": 4,
+        "peak": { "mode": "discount", "multiplier": 0.25, "windows": ["Mon-Sun 00:30-08:30"] }
+      },
+      "flat-model": { "input": 0.5, "output": 1, "peak": false }
+    }
+
+为什么必须是三层：**不同平台的峰谷算法不一样，同一个平台内部也可能不一样**——
+有的是工作日白天加价，有的是夜间打折，方向相反、时段也不重叠。所以时段、时区、
+方向和倍率都得能按平台或按模型分别给，只留一套全局的配置表达不了。
+
+- **mode** 决定方向：**surcharge** 窗口内加价（倍率 > 1），**discount** 窗口内打折
+  （倍率在 0 与 1 之间）。倍率**一律作用在窗口内**，窗口外按基准价。
+- **multiplier** 可以按桶给：写成对象时必须四个桶都给全，缺桶会被校验标出来。
+- 时段按方案的 **timezone** 判断，与你的系统时区无关；区间是**左闭右开**
   （12:00 整已算低峰），且只在列出的星期生效。
-- **徽标上常显当前计费模式**：支持分时计费的模型，金额旁会带一个小标记——**谷**（低峰）
-  或 **峰×2**（高峰），悬停可看具体时段；点开面板还有「当前计费」一行复核。
+- **徽标上常显当前计费模式**：金额旁带一个小标记——加价制显示 **谷** / **峰×2**，
+  折扣制显示 **惠×0.25** / **标准**，悬停可看具体时段；点开面板还有「当前计费」一行复核。
 - 计费按**每一笔用量增长发生的时刻**分档：插件把会话累计量的每次增量连同
   当前时间戳存进 **dsh.token-purse.ledger.v1:会话id**，逐笔套用当时的档位，
   所以跨档会话是**分段累加**，而不是「按当前时刻一刀切」。
 - 唯一的近似：插件安装前、或页面关闭期间累积的历史，账本里没有时刻，会按
   **打开面板那一刻的档位**补算。刷新页面不会清空账本（按会话 id 持久化）。
+- 另一个已知边界：金额是按**当前**配置重算的，改费率或改峰谷方案会**回头改动历史金额**。
+  平台若按日期整表换价（例如官方计划的 2026-09-14 路由变更），只能人工校准。
 
 ## 峰谷消耗
 
-面板里的 **峰谷** 分区把**当前会话**按当时生效的费率档位分成三组：
+面板里的 **峰谷** 分区把**当前会话**按当时生效的费率档位分组（加价制是**高峰 / 低峰**，
+折扣制是**优惠 / 标准价**，另有**平价**）：
 
-- **高峰**：命中分时窗口、且该模型配了 `peakMultiplier > 1`。
-- **低峰**：同一个模型，但落在窗口外。
-- **平价**：该模型没有配分时价（`peakMultiplier` 为 1），高峰低谷一个价。
+- **高峰 / 优惠**：命中分时窗口，方案分别是 surcharge / discount。
+- **低峰 / 标准价**：同一个模型，但落在窗口外。
+- **平价**：该模型没有分时方案（`peak: false`，或者压根没配），高峰低谷一个价。
 
-每行给出 token 数与金额，并带一条占比条。只要会话里有**高峰或低峰**的消耗就会显示；
-如果全部都是平价，这个分区就不出现（没有信息量）。三组金额相加恒等于面板顶部的总额。
+每行给出 token 数与金额，并带一条占比条。只要会话里有分时消耗就会显示；
+各组金额相加恒等于面板顶部的总额。
 
 配套地，「每日」里**有高峰（或平价）用量的那天**会在日期下方多一行
 `高峰 ¥x · 低峰 ¥y`，用来回看长期习惯——比如「重活尽量挪到低峰」到底省了多少。
@@ -345,6 +393,21 @@ DeepSeek 官方（以及走官方渠道的 packyapi）都是：工作日 **09:00
 
 ## 更新记录
 
+- **0.2.0**：分时计价升级为**三层可继承的方案**；配置键迁移到 **dsh.token-purse.config.v3**
+  （v2 / v1 读取时自动迁移）。
+  - 方案形如 `{ "mode": "surcharge" | "discount", "multiplier": 标量或四个桶, "timezone"?, "windows"? }`，
+    按 **模型 → providers.<id> → 顶层 peak** 逐字段回落。**倍率才是一切开关**：只写顶层时段不会让
+    任何条目变成分时计费。**`"peak": false`** 表示显式不分时，所以在加价的平台上也能放一个平价模型。
+    **mode** 决定方向：surcharge 的倍率必须 > 1，discount 必须在 0 与 1 之间；倍率**一律作用在窗口内**。
+  - 新增顶层 **providers** 段，键就是 DSH 上报的 provider id（与 settings.yaml 一致），同一平台的方案
+    只写一次。这也是必须换存储键的原因：mergeConfig 会丢弃不认识的顶层键。
+  - 编辑器会把**配置问题**（路径 + 原因）列在 JSON 下方并本地化。非法值仍有可用的兜底，但不再静默——
+    0.1.x 把 `peakMultiplier: 0.5` 夹成 1 且不吭声。旧 `peakMultiplier` 仍兼容：`≠1` 等价于加价方案，
+    `1` 等价于不分时。
+  - 峰谷分区改为**按模式区分**（五档：高峰 / 低峰 / 优惠 / 标准价 / 平价），徽标相应显示 *峰×2 / 谷*
+    或 *惠×0.25 / 标准*。
+  - 有意不做：不实现 `effectiveFrom` 按日期换价（平台整表换价时仍需人工校准），也不支持逐小时价目表。
+    分桶倍率在「每日」与「累积」视图里以 input 桶作为代表值展示。
 - **0.1.22**：费率编辑**回退成只有 JSON 配置**——结构化表格（每行一个 provider/model 加四个
   数字框）在 320px 的面板里放不下。第一版是固定 76px 的输入框压在 52px 的轨道上；改成流式
   后**仍然重叠**，根因是 box-sizing 不被继承，width:100% 加上 padding 和 border 在

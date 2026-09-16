@@ -21,14 +21,37 @@ const { useState, useEffect, useRef, useMemo, createElement: h } = React;
 
 const NS = "token-purse";
 const STYLE_ID = "@dsh-plugins/token-purse/client.css";
-const STORAGE_KEY = "dsh.token-purse.config.v2";
+const STORAGE_KEY = "dsh.token-purse.config.v3";
+const STORAGE_KEY_V2 = "dsh.token-purse.config.v2";
 const STORAGE_KEY_V1 = "dsh.token-purse.config.v1";
 const LEDGER_KEY = "dsh.token-purse.ledger.v1";
 /* v1 里 deepseek-flash 是官方示例价；迁移时只有仍等于旧值的条目才换成新默认价。 */
 const LEGACY_FLASH_V1 = { input: 0.28, cacheRead: 0.028, output: 0.42 };
 
 /* 兜底费率（人民币 / 百万 token，取 DeepSeek 官方 Flash 空闲价）。cacheRead/cacheWrite 缺省时按 input 计。 */
-const FALLBACK_RATES = { currency: "CNY", input: 1, cacheRead: 0.02, cacheWrite: 1, output: 4, peakMultiplier: 1 };
+const FALLBACK_RATES = { currency: "CNY", input: 1, cacheRead: 0.02, cacheWrite: 1, output: 4, peak: null };
+
+/* 费率的四个计价桶（与用量桶 BUCKETS 不同名：这里是对应的单价字段）。 */
+const RATE_BUCKETS = ["input", "cacheRead", "cacheWrite", "output"];
+
+/*
+ * 分时（峰谷）方案 = 一组「可继承」字段：
+ *   mode       "surcharge"（窗口内加价）| "discount"（窗口内打折）
+ *   multiplier 标量，或四个桶都给全的对象（缺桶是配置错误，不静默按 1）
+ *   timezone   该方案的时区
+ *   windows    该方案的时段，如 "Mon-Fri 09:00-12:00"
+ * 三层回落、字段级继承：模型条目 → provider → 顶层 peak（只提供 timezone/windows）。
+ * 倍率一律作用在**窗口内**；mode 只决定方向（加价 / 打折）与界面怎么称呼它。
+ * 条目写 "peak": false 表示显式不分时，不再继承 provider 的方案。
+ */
+const PEAK_BANDS = ["high", "low", "deal", "standard", "flat"];
+const PEAK_BAND_LABEL = {
+  high: "peak.group.high",
+  low: "peak.group.low",
+  deal: "peak.group.deal",
+  standard: "peak.group.standard",
+  flat: "peak.group.flat"
+};
 
 /*
  * 费率表：每条自带 currency（默认 CNY）的「每百万 token」单价，含分时系数。
@@ -44,16 +67,22 @@ const DEFAULT_MODELS = {
    * 注意它页面用 $ 显示，但数值 = 官方「元」价 × 倍率（例：v4-pro 官方 ¥4.5，5 折后 $2.25），
    * 官方英文页同款价格是 $0.66，所以 packyapi 这里是人民币。
    */
-  "packyapi/deepseek-flash": { currency: "CNY", input: 0.8, cacheRead: 0.016, cacheWrite: 0.8, output: 3.2, peakMultiplier: 2 },
-  "packyapi/deepseek-v4-flash": { currency: "CNY", input: 0.5, cacheRead: 0.01, cacheWrite: 0.5, output: 2, peakMultiplier: 2 },
-  "packyapi/deepseek-v4-flash-vision-exp": { currency: "CNY", input: 0.8, cacheRead: 0.016, cacheWrite: 0.8, output: 3.2, peakMultiplier: 2 },
-  "packyapi/deepseek-v4-pro": { currency: "CNY", input: 2.25, cacheRead: 0.075, cacheWrite: 2.25, output: 6.75, peakMultiplier: 2 },
+  "packyapi/deepseek-flash": { currency: "CNY", input: 0.8, cacheRead: 0.016, cacheWrite: 0.8, output: 3.2 },
+  "packyapi/deepseek-v4-flash": { currency: "CNY", input: 0.5, cacheRead: 0.01, cacheWrite: 0.5, output: 2 },
+  "packyapi/deepseek-v4-flash-vision-exp": { currency: "CNY", input: 0.8, cacheRead: 0.016, cacheWrite: 0.8, output: 3.2 },
+  "packyapi/deepseek-v4-pro": { currency: "CNY", input: 2.25, cacheRead: 0.075, cacheWrite: 2.25, output: 6.75 },
   /* 官方 deepseek-flash（V4.1-Flash）：空闲 ¥1 / 缓存命中 ¥0.02 / 输出 ¥4，高峰 = 空闲 ×2。 */
-  "deepseek-official/deepseek-flash": { currency: "CNY", input: 1, cacheRead: 0.02, cacheWrite: 1, output: 4, peakMultiplier: 2 },
+  "deepseek-official/deepseek-flash": { currency: "CNY", input: 1, cacheRead: 0.02, cacheWrite: 1, output: 4 },
   /* 旧模型名 deepseek-v4-flash / -vision-exp 仍可调用，由 V4.1-Flash 服务并按 Flash 计费。 */
-  "deepseek-official/deepseek-v4-flash": { currency: "CNY", input: 1, cacheRead: 0.02, cacheWrite: 1, output: 4, peakMultiplier: 2 },
+  "deepseek-official/deepseek-v4-flash": { currency: "CNY", input: 1, cacheRead: 0.02, cacheWrite: 1, output: 4 },
   /* 官方 deepseek-v4-pro：空闲 ¥4.5 / ¥0.15 / ¥13.5；官方计划 2026-09-14 12:00 后路由到 V4.1-Flash。 */
-  "deepseek-official/deepseek-v4-pro": { currency: "CNY", input: 4.5, cacheRead: 0.15, cacheWrite: 4.5, output: 13.5, peakMultiplier: 2 }
+  "deepseek-official/deepseek-v4-pro": { currency: "CNY", input: 4.5, cacheRead: 0.15, cacheWrite: 4.5, output: 13.5 }
+};
+
+/* 平台级分时方案：方案属于平台，同平台的多个模型不必各写一遍。 */
+const DEFAULT_PROVIDERS = {
+  packyapi: { peak: { mode: "surcharge", multiplier: 2 } },
+  "deepseek-official": { peak: { mode: "surcharge", multiplier: 2 } }
 };
 
 /* 分时时段：工作日 Asia/Shanghai 09:00–12:00、14:00–18:00（半开区间）。 */
@@ -67,6 +96,7 @@ const DEFAULT_CONFIG = {
   currency: { code: "CNY", symbol: "¥", perUsd: 7.1, auto: false },
   fx: { USD: 1, CNY: 7.1 },
   peak: DEFAULT_PEAK,
+  providers: DEFAULT_PROVIDERS,
   models: DEFAULT_MODELS
 };
 
@@ -177,7 +207,7 @@ const CSS_TEXT =
   ".TPurse_editor{margin-top:8px}" +
   ".TPurse_textarea{box-sizing:border-box;width:100%;height:148px;padding:6px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-markdown-code-font-family);font-size:11px;line-height:16px;resize:vertical}" +
   ".TPurse_hint{margin-top:4px;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px}" +
-  ".TPurse_error{margin-top:4px;padding-left:6px;border-left:2px solid var(--dsw-alias-state-error-primary);color:var(--dsw-alias-label-primary);font-size:11px}" +
+  ".TPurse_error{margin-top:4px;padding-left:6px;border-left:2px solid var(--dsw-alias-state-error-primary);color:var(--dsw-alias-label-primary);font-size:11px}.TPurse_checkTitle{margin-top:4px;font-size:10px;line-height:15px;color:var(--dsw-alias-label-primary)}.TPurse_checkItem{margin-top:2px;font-size:10px;line-height:14px;overflow-wrap:anywhere}" +
   ".TPurse_actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}" +
   ".TPurse_ghost,.TPurse_primary{min-height:24px;padding:4px 10px;border:0;border-radius:8px;font-size:11px;cursor:pointer;transition:background-color .14s ease,opacity .14s ease}" +
   ".TPurse_ghost{background:transparent;color:var(--dsw-alias-label-secondary)}" +
@@ -282,6 +312,8 @@ const CSS = {
   textarea: "TPurse_textarea",
   hint: "TPurse_hint",
   error: "TPurse_error",
+  checkTitle: "TPurse_checkTitle",
+  checkItem: "TPurse_checkItem",
   actions: "TPurse_actions",
   ghost: "TPurse_ghost",
   primary: "TPurse_primary",
@@ -362,10 +394,61 @@ function toNumber(value, fallback) {
   return typeof numeric === "number" && Number.isFinite(numeric) && numeric >= 0 ? numeric : fallback;
 }
 
+/** 一个分时方案；字段可部分缺省（缺省即向上继承），四个都缺省时返回 null。 */
+function normalizePeakScheme(raw) {
+  if (raw === null || raw === undefined || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const mode = typeof raw.mode === "string" && raw.mode.length > 0 ? raw.mode.toLowerCase() : null;
+  let multiplier = null;
+  if (raw.multiplier !== null && raw.multiplier !== undefined && typeof raw.multiplier === "object" && !Array.isArray(raw.multiplier)) {
+    const buckets = {};
+    let complete = true;
+    for (const bucket of RATE_BUCKETS) {
+      const value = toNumber(raw.multiplier[bucket], null);
+      if (value === null || value <= 0) { complete = false; break; }
+      buckets[bucket] = value;
+    }
+    if (complete) multiplier = buckets;
+  } else {
+    const value = toNumber(raw.multiplier, null);
+    if (value !== null) multiplier = value;
+  }
+  const timezone = typeof raw.timezone === "string" && raw.timezone.length > 0 && raw.timezone.length <= 64 ? raw.timezone : null;
+  const windows = Array.isArray(raw.windows)
+    ? raw.windows.filter((item) => typeof item === "string" && item.length > 0 && item.length <= 64)
+    : null;
+  if (mode === null && multiplier === null && timezone === null && windows === null) return null;
+  return { mode, multiplier, timezone, windows };
+}
+
+function normalizeProvider(raw) {
+  const source = raw !== null && raw !== undefined && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  return { peak: normalizePeakScheme(source.peak) };
+}
+
+/*
+ * peak 字段有三态，必须区分：
+ *   缺省   → undefined，向上继承 provider / 顶层方案
+ *   false  → 显式不分时，不再继承
+ *   对象   → 自己的方案（字段仍可继承）
+ * 兼容 0.1.x 的 peakMultiplier：≠1 等价于 { mode: "surcharge", multiplier: n }，=1 等价于不分时。
+ * 旧版把 ≤1 一律夹成 1，等于静默丢掉配置；现在如实保留，方向不对交给 validateConfig 报出来。
+ */
+function normalizedPeakField(source) {
+  if (source.peak === false) return false;
+  const scheme = normalizePeakScheme(source.peak);
+  if (scheme !== null) return scheme;
+  if (source.peakMultiplier !== null && source.peakMultiplier !== undefined) {
+    const legacy = toNumber(source.peakMultiplier, null);
+    if (legacy === null) return undefined;
+    if (legacy === 1) return false;
+    return { mode: "surcharge", multiplier: legacy, timezone: null, windows: null };
+  }
+  return undefined;
+}
+
 function normalizeRates(raw) {
   const source = raw !== null && raw !== undefined && typeof raw === "object" ? raw : {};
   const input = toNumber(source.input, FALLBACK_RATES.input);
-  const peakMultiplier = toNumber(source.peakMultiplier, 1);
   const currency =
     typeof source.currency === "string" && source.currency.length > 0 && source.currency.length <= 8
       ? source.currency.toUpperCase()
@@ -376,8 +459,111 @@ function normalizeRates(raw) {
     cacheRead: toNumber(source.cacheRead, input),
     cacheWrite: toNumber(source.cacheWrite, input),
     output: toNumber(source.output, FALLBACK_RATES.output),
-    peakMultiplier: peakMultiplier > 1 ? peakMultiplier : 1
+    peak: normalizedPeakField(source)
   };
+}
+
+/*
+ * 配置体检，返回 [{ path, key, params }]（key 交给 t() 本地化）。
+ * 存在的意义：normalize 层会把非法值替换成默认值，那是为了让界面能继续工作，
+ * 但「配置没生效」必须能被看见——0.1.x 的 peakMultiplier <= 1 会被静默夹成 1，就是这类坑。
+ */
+function validateConfig(parsed) {
+  const issues = [];
+  const note = (path, key, params) => issues.push({ path, key, params: params === undefined ? {} : params });
+  if (parsed === null || parsed === undefined || typeof parsed !== "object" || Array.isArray(parsed)) {
+    note("", "check.object");
+    return issues;
+  }
+  const isNumber = (value) => typeof value === "number" && Number.isFinite(value);
+  const checkScheme = (path, raw, requireMultiplier) => {
+    if (raw === undefined || raw === null || raw === false) return;
+    if (typeof raw !== "object" || Array.isArray(raw)) {
+      note(path, "check.peakForm");
+      return;
+    }
+    const mode = raw.mode === undefined || raw.mode === null ? "surcharge" : raw.mode;
+    if (mode !== "surcharge" && mode !== "discount") {
+      note(path + ".mode", "check.mode");
+      return;
+    }
+    const multiplier = raw.multiplier;
+    const hasMultiplier = multiplier !== undefined && multiplier !== null;
+    if (!hasMultiplier && requireMultiplier === true) note(path + ".multiplier", "check.multiplierMissing");
+    const bucketKeys = hasMultiplier && typeof multiplier === "object" && !Array.isArray(multiplier) ? RATE_BUCKETS : null;
+    if (bucketKeys !== null) {
+      for (const bucket of bucketKeys) {
+        if (multiplier[bucket] === undefined) note(path + ".multiplier." + bucket, "check.perBucket");
+      }
+    }
+    const entries = !hasMultiplier ? [] : bucketKeys === null ? [[path + ".multiplier", multiplier]] : bucketKeys.map((bucket) => [path + ".multiplier." + bucket, multiplier[bucket]]);
+    for (const pair of entries) {
+      const at = pair[0];
+      const value = pair[1];
+      if (value === undefined) continue;
+      if (!isNumber(value) || value <= 0) {
+        note(at, "check.positive");
+        continue;
+      }
+      if (mode === "surcharge" && value <= 1) note(at, "check.surcharge");
+      if (mode === "discount" && value >= 1) note(at, "check.discount");
+    }
+    if (Array.isArray(raw.windows)) {
+      if (raw.windows.length === 0) note(path + ".windows", "check.windowsEmpty");
+      for (const text of raw.windows) {
+        if (typeof text !== "string" || parsePeakWindow(text) === null) {
+          note(path + ".windows", "check.windowText", { value: JSON.stringify(text) });
+        }
+      }
+    } else if (raw.windows !== undefined && raw.windows !== null) {
+      note(path + ".windows", "check.windowsArray");
+    }
+    if (typeof raw.timezone === "string" && raw.timezone.length > 0) {
+      if (zonedDayMinutes(new Date(), raw.timezone) === null) note(path + ".timezone", "check.timezoneUnknown", { value: raw.timezone });
+    } else if (raw.timezone !== undefined && raw.timezone !== null) {
+      note(path + ".timezone", "check.timezoneText");
+    }
+  };
+  checkScheme("peak", parsed.peak, false);
+  const providers = parsed.providers;
+  if (providers !== undefined && providers !== null) {
+    if (typeof providers !== "object" || Array.isArray(providers)) {
+      note("providers", "check.object");
+    } else {
+      for (const key of Object.keys(providers)) {
+        const entry = providers[key];
+        checkScheme("providers." + key + ".peak", entry === null || typeof entry !== "object" || Array.isArray(entry) ? entry : entry.peak, true);
+      }
+    }
+  }
+  const models = parsed.models;
+  if (models !== undefined && models !== null && (typeof models !== "object" || Array.isArray(models))) {
+    note("models", "check.modelsObject");
+  } else if (models !== undefined && models !== null) {
+    for (const key of Object.keys(models)) {
+      const entry = models[key];
+      const path = "models." + key;
+      if (entry === null || entry === undefined || typeof entry !== "object" || Array.isArray(entry)) {
+        note(path, "check.object");
+        continue;
+      }
+      for (const field of RATE_BUCKETS) {
+        if (entry[field] === undefined || entry[field] === null) continue;
+        if (!isNumber(entry[field]) || entry[field] < 0) note(path + "." + field, "check.rateNumber");
+      }
+      if (entry.currency !== undefined && entry.currency !== null && typeof entry.currency !== "string") {
+        note(path + ".currency", "check.currencyCode");
+      }
+      checkScheme(path + ".peak", entry.peak, true);
+    }
+  }
+  const currency = parsed.currency;
+  if (currency !== undefined && currency !== null && typeof currency === "object" && !Array.isArray(currency)) {
+    if (currency.perUsd !== undefined && currency.perUsd !== null && (!isNumber(currency.perUsd) || currency.perUsd <= 0)) {
+      note("currency.perUsd", "check.perUsd");
+    }
+  }
+  return issues;
 }
 
 /** fx 表：各币种每 1 美元的数额（USD 恒为 1）。 */
@@ -409,6 +595,12 @@ function normalizePeak(raw) {
 function cloneConfig(config) {
   const models = {};
   for (const key of Object.keys(config.models)) models[key] = normalizeRates(config.models[key]);
+  const providers = {};
+  const sourceProviders =
+    config.providers !== null && config.providers !== undefined && typeof config.providers === "object" && !Array.isArray(config.providers)
+      ? config.providers
+      : {};
+  for (const key of Object.keys(sourceProviders)) providers[key] = normalizeProvider(sourceProviders[key]);
   return {
     currency: {
       code: typeof config.currency.code === "string" ? config.currency.code : "",
@@ -418,6 +610,7 @@ function cloneConfig(config) {
     },
     fx: normalizeFx(config.fx),
     peak: normalizePeak(config.peak),
+    providers,
     models
   };
 }
@@ -443,6 +636,15 @@ function mergeConfig(base, patch) {
     if (typeof peak.timezone === "string" && peak.timezone.length > 0 && peak.timezone.length <= 64) merged.peak.timezone = peak.timezone;
     if (Array.isArray(peak.windows)) {
       merged.peak.windows = peak.windows.filter((item) => typeof item === "string" && item.length > 0 && item.length <= 64);
+    }
+  }
+  const providers = patch.providers;
+  if (providers !== null && providers !== undefined && typeof providers === "object" && !Array.isArray(providers)) {
+    for (const rawKey of Object.keys(providers)) {
+      const key = rawKey.toLowerCase();
+      if (key.length === 0 || key.length > 64) continue;
+      if (key === "__proto__" || key === "prototype" || key === "constructor") continue;
+      merged.providers[key] = normalizeProvider(providers[key]);
     }
   }
   const models = patch.models;
@@ -511,6 +713,13 @@ function readConfig() {
       const merged = mergeConfig(base, migrateLegacyCurrency(parsed));
       if (stale) writeConfig(merged);
       return merged;
+    }
+    /* v2 的 peakMultiplier 由 normalizeRates 就地升级成 peak 方案，写回时即为 v3 形态。 */
+    const storedV2 = window.localStorage.getItem(STORAGE_KEY_V2);
+    if (storedV2 !== null && storedV2 !== undefined) {
+      const migrated = mergeConfig(base, migrateLegacyCurrency(JSON.parse(storedV2)));
+      writeConfig(migrated);
+      return migrated;
     }
     const legacyStored = window.localStorage.getItem(STORAGE_KEY_V1);
     if (legacyStored !== null && legacyStored !== undefined) {
@@ -646,19 +855,6 @@ function parsePeakWindow(text) {
   return { days, from, to };
 }
 
-function parsePeak(config) {
-  const source = config !== null && config !== undefined && typeof config.peak === "object" ? config.peak : null;
-  if (source === null || source === undefined || !Array.isArray(source.windows)) return null;
-  const windows = [];
-  for (const text of source.windows) {
-    const parsed = typeof text === "string" ? parsePeakWindow(text) : null;
-    if (parsed !== null) windows.push(parsed);
-  }
-  if (windows.length === 0) return null;
-  const timezone = typeof source.timezone === "string" && source.timezone.length > 0 ? source.timezone : "UTC";
-  return { timezone, windows };
-}
-
 const DAY_FORMATTERS = new Map();
 
 function zonedDayMinutes(date, timeZone) {
@@ -690,30 +886,99 @@ function zonedDayMinutes(date, timeZone) {
   }
 }
 
-function isPeakAt(date, peak) {
-  if (peak === null) return false;
-  const zoned = zonedDayMinutes(date, peak.timezone);
+function isPeakAt(date, schedule) {
+  if (schedule === null) return false;
+  const zoned = zonedDayMinutes(date, schedule.timezone);
   if (zoned === null) return false;
-  for (const window of peak.windows) {
+  for (const window of schedule.windows) {
     if (window.days.has(zoned.day) && zoned.minutes >= window.from && zoned.minutes < window.to) return true;
   }
   return false;
 }
 
-/** 某模型在 at 时刻生效的单价（高峰时段按 peakMultiplier 上浮）。 */
-function ratesAt(config, modelId, at, peak, provider) {
-  const rates = resolveRates(config, modelId, provider);
-  if (peak === null || !(rates.peakMultiplier > 1)) return rates;
-  if (!isPeakAt(new Date(at), peak)) return rates;
-  const factor = rates.peakMultiplier;
-  return {
-    currency: rates.currency,
-    input: rates.input * factor,
-    cacheRead: rates.cacheRead * factor,
-    cacheWrite: rates.cacheWrite * factor,
-    output: rates.output * factor,
-    peakMultiplier: factor
+/** provider 级方案（config.providers）。 */
+function providerPeak(config, provider) {
+  if (provider === null || provider === undefined) return null;
+  const table = config !== null && config !== undefined && typeof config.providers === "object" && config.providers !== null ? config.providers : null;
+  if (table === null) return null;
+  const entry = table[String(provider).toLowerCase()];
+  if (entry === null || entry === undefined) return null;
+  return entry.peak === undefined ? null : entry.peak;
+}
+
+/** 时段字符串 → 可判定的日程；一条都解析不出来时返回 null（视为不分时）。 */
+function peakSchedule(windows, timezone) {
+  const parsed = [];
+  for (const text of windows) {
+    const window = typeof text === "string" ? parsePeakWindow(text) : null;
+    if (window !== null) parsed.push(window);
+  }
+  return parsed.length === 0 ? null : { timezone, windows: parsed };
+}
+
+/*
+ * 三层回落、字段级继承：模型条目 → provider → 顶层 peak（后者只提供 timezone/windows）。
+ * 没有倍率就没有分时——顶层时段单独存在不会让任何条目变成峰谷计费。
+ */
+function peakSchemeFor(config, provider, rates) {
+  if (rates.peak === false) return null;
+  let mode = null;
+  let multiplier = null;
+  let timezone = null;
+  let windows = null;
+  const take = (layer) => {
+    if (layer === null || layer === undefined || layer === false) return;
+    if (mode === null && layer.mode !== null && layer.mode !== undefined) mode = layer.mode;
+    if (multiplier === null && layer.multiplier !== null && layer.multiplier !== undefined) multiplier = layer.multiplier;
+    if (timezone === null && layer.timezone !== null && layer.timezone !== undefined) timezone = layer.timezone;
+    if (windows === null && layer.windows !== null && layer.windows !== undefined) windows = layer.windows;
   };
+  take(rates.peak);
+  take(providerPeak(config, provider));
+  if (multiplier === null) return null;
+  if (mode === null) mode = "surcharge";
+  if (timezone === null) timezone = config.peak.timezone;
+  if (windows === null) windows = config.peak.windows;
+  const schedule = peakSchedule(windows, timezone);
+  if (schedule === null) return null;
+  /* 分桶倍率没有单一数值，界面上用 input 桶代表展示。 */
+  const label = typeof multiplier === "number" ? multiplier : multiplier.input;
+  return { mode, multiplier, timezone, windows, schedule, label };
+}
+
+/** "flat"（不分时）/ "in"（窗口内）/ "out"（窗口外）。 */
+function peakStateAt(scheme, at) {
+  if (scheme === null) return "flat";
+  return isPeakAt(new Date(at), scheme.schedule) ? "in" : "out";
+}
+
+/** 窗口内的倍率；窗口外与不分时都返回 1。 */
+function peakFactor(scheme, state, bucket) {
+  if (scheme === null || state !== "in") return 1;
+  return typeof scheme.multiplier === "number" ? scheme.multiplier : scheme.multiplier[bucket];
+}
+
+/** 界面分组档位：high/low/deal/standard/flat。 */
+function peakBand(scheme, state) {
+  if (scheme === null || state === "flat") return "flat";
+  if (scheme.mode === "discount") return state === "in" ? "deal" : "standard";
+  return state === "in" ? "high" : "low";
+}
+
+/** 每日库存的是 p/o/f 三态标记，配上当前方案即可映射成档位。 */
+function bandOfFlag(flag, scheme) {
+  if (flag === "f") return "flat";
+  return peakBand(scheme, flag === "p" ? "in" : "out");
+}
+
+/** 某模型在 at 时刻生效的单价（分时窗口内按方案调整）。 */
+function ratesAt(config, modelId, at, provider) {
+  const rates = resolveRates(config, modelId, provider);
+  const scheme = peakSchemeFor(config, provider, rates);
+  if (peakStateAt(scheme, at) !== "in") return rates;
+  const scaled = { currency: rates.currency, peak: rates.peak };
+  for (const bucket of RATE_BUCKETS) scaled[bucket] = rates[bucket] * peakFactor(scheme, "in", bucket);
+  return scaled;
 }
 
 /* ── 增量账本：会话投影只给累计值，这里按观察时刻切成增量、逐段计价 ── */
@@ -872,11 +1137,10 @@ function usdBreakdown(totals, selection, config, ledger, at) {
   const model = pickModel(selection);
   const modelId = model === null ? null : model.model;
   const providerId = model === null || typeof model.provider !== "string" || model.provider.length === 0 ? null : model.provider;
-  const peak = parsePeak(config);
   const fx = fxPerUsd(config);
   const usd = zeroBuckets();
   const accumulate = (buckets, entryProvider, entryModel, moment) => {
-    const rates = ratesAt(config, entryModel === null ? modelId : entryModel, moment, peak, entryProvider === null || entryProvider === undefined ? providerId : entryProvider);
+    const rates = ratesAt(config, entryModel === null ? modelId : entryModel, moment, entryProvider === null || entryProvider === undefined ? providerId : entryProvider);
     const cost = costBuckets(buckets, rates);
     /* 费率自带币种 → 美元：除以「该币种每 1 美元的数额」；显示时再乘 currency.perUsd。 */
     const ratePerUsd = toNumber(fx[rates.currency], 1);
@@ -903,14 +1167,15 @@ function usdBreakdown(totals, selection, config, ledger, at) {
     accumulate(totals, providerId, modelId, at);
   }
   const rates = resolveRates(config, modelId, providerId);
-  const active = peak !== null && rates.peakMultiplier > 1 && isPeakAt(new Date(at), peak);
+  const scheme = peakSchemeFor(config, providerId, rates);
+  const state = peakStateAt(scheme, at);
   return {
     usd,
     source: rateSource(config, modelId, providerId),
     peak:
-      peak === null || rates.peakMultiplier <= 1
+      scheme === null
         ? null
-        : { active, multiplier: rates.peakMultiplier, timezone: peak.timezone, windows: config.peak.windows }
+        : { active: state === "in", mode: scheme.mode, multiplier: scheme.label, timezone: scheme.timezone, windows: scheme.windows }
   };
 }
 
@@ -1014,13 +1279,13 @@ function writeDaily(store) {
 
 /** 把会话账本折算成「天 × 模型 × 峰谷」的桶；重复计算同一账本结果一致（幂等）。 */
 function sessionDayRows(ledger, config, project) {
-  const peak = parsePeak(config);
   const rows = new Map();
   const projectKey = typeof project === "string" && project.length > 0 ? project : "";
   const push = (buckets, provider, model, moment) => {
     const day = localDayKey(moment);
     const rates = resolveRates(config, model, provider);
-    const flag = rates.peakMultiplier <= 1 ? "f" : isPeakAt(new Date(moment), peak) ? "p" : "o";
+    const state = peakStateAt(peakSchemeFor(config, provider, rates), moment);
+    const flag = state === "flat" ? "f" : state === "in" ? "p" : "o";
     const key = day + "\u0000" + (provider === null ? "" : provider) + "\u0000" + (model === null ? "" : model) + "\u0000" + flag;
     let row = rows.get(key);
     if (row === undefined) {
@@ -1083,7 +1348,6 @@ function priceSegment(buckets, rates, fx, perUsd) {
 
 /** 当前会话按 provider/model 拆分的明细，金额大的在前。 */
 function sessionModelRows(ledger, usage, selection, config, at) {
-  const peak = parsePeak(config);
   const fx = fxPerUsd(config);
   const perUsdValue = toNumber(config.currency.perUsd, 1);
   const perUsd = perUsdValue > 0 ? perUsdValue : 1;
@@ -1095,7 +1359,7 @@ function sessionModelRows(ledger, usage, selection, config, at) {
       row = { key, provider: segment.provider, model: segment.model, label: formatModelLabel(segment.provider, segment.model), tokens: 0, amount: 0 };
       rows.set(key, row);
     }
-    const rates = ratesAt(config, segment.model, segment.at, peak, segment.provider);
+    const rates = ratesAt(config, segment.model, segment.at, segment.provider);
     row.amount += priceSegment(segment.b, rates, fx, perUsd);
     for (const bucket of BUCKETS) row.tokens += segment.b[bucket];
   }
@@ -1106,23 +1370,19 @@ function sessionModelRows(ledger, usage, selection, config, at) {
 
 /** 当前会话按「高峰 / 低峰 / 平价」分组；平价指没有配置分时价的模型。 */
 function splitByPeak(ledger, usage, selection, config, at) {
-  const peak = parsePeak(config);
   const fx = fxPerUsd(config);
   const perUsdValue = toNumber(config.currency.perUsd, 1);
   const perUsd = perUsdValue > 0 ? perUsdValue : 1;
-  const groups = {
-    peak: { key: "peak", label: "peak.group.high", tokens: 0, amount: 0 },
-    off: { key: "off", label: "peak.group.low", tokens: 0, amount: 0 },
-    flat: { key: "flat", label: "peak.group.flat", tokens: 0, amount: 0 }
-  };
+  const groups = {};
+  for (const band of PEAK_BANDS) groups[band] = { key: band, label: PEAK_BAND_LABEL[band], tokens: 0, amount: 0 };
   for (const segment of ledgerSegments(ledger, usage, selection, at)) {
-    const rates = ratesAt(config, segment.model, segment.at, peak, segment.provider);
-    const member = rates.peakMultiplier <= 1 ? "flat" : isPeakAt(new Date(segment.at), peak) ? "peak" : "off";
-    const target = groups[member];
+    const rates = ratesAt(config, segment.model, segment.at, segment.provider);
+    const scheme = peakSchemeFor(config, segment.provider, resolveRates(config, segment.model, segment.provider));
+    const target = groups[peakBand(scheme, peakStateAt(scheme, segment.at))];
     target.amount += priceSegment(segment.b, rates, fx, perUsd);
     for (const bucket of BUCKETS) target.tokens += segment.b[bucket];
   }
-  const list = [groups.off, groups.peak, groups.flat].filter((row) => row.tokens > 0);
+  const list = PEAK_BANDS.map((band) => groups[band]).filter((row) => row.tokens > 0);
   list.sort((left, right) => right.amount - left.amount);
   return list;
 }
@@ -1163,11 +1423,8 @@ function dailyStats(store, config, sessionFilter) {
   const days = [];
   for (const day of Object.keys(store.days)) {
     const byModel = new Map();
-    const groups = {
-      p: { tokens: 0, amount: 0 },
-      o: { tokens: 0, amount: 0 },
-      f: { tokens: 0, amount: 0 }
-    };
+    const groups = {};
+    for (const band of PEAK_BANDS) groups[band] = { tokens: 0, amount: 0 };
     const buckets = zeroBuckets();
     const bucketAmounts = zeroBuckets();
     const byProject = new Map();
@@ -1191,15 +1448,11 @@ function dailyStats(store, config, sessionFilter) {
       }
       const flag = normalizePeakFlag(row.k);
       const rates = resolveRates(config, row.m, row.p);
-      const factor = flag === "p" && rates.peakMultiplier > 1 ? rates.peakMultiplier : 1;
-      const effective = {
-        currency: rates.currency,
-        input: rates.input * factor,
-        cacheRead: rates.cacheRead * factor,
-        cacheWrite: rates.cacheWrite * factor,
-        output: rates.output * factor,
-        peakMultiplier: rates.peakMultiplier
-      };
+      const scheme = peakSchemeFor(config, row.p, rates);
+      const band = bandOfFlag(flag, scheme);
+      const state = flag === "p" && scheme !== null ? "in" : "flat";
+      const effective = { currency: rates.currency, peak: rates.peak };
+      for (const bucket of RATE_BUCKETS) effective[bucket] = rates[bucket] * peakFactor(scheme, state, bucket);
       const native = costBuckets(row.b, effective);
       const ratePerUsd = toNumber(fx[effective.currency], 1);
       const divide = ratePerUsd > 0 ? 1 / ratePerUsd : 1;
@@ -1213,13 +1466,13 @@ function dailyStats(store, config, sessionFilter) {
         const value = native[bucket] * divide * perUsd;
         amount += value;
         entry.amount += value;
-        groups[flag].amount += value;
+        groups[band].amount += value;
         bucketAmounts[bucket] += value;
         projectEntry.amount += value;
         sessionEntry.amount += value;
         tokens += row.b[bucket];
         entry.tokens += row.b[bucket];
-        groups[flag].tokens += row.b[bucket];
+        groups[band].tokens += row.b[bucket];
         buckets[bucket] += row.b[bucket];
         projectEntry.tokens += row.b[bucket];
         sessionEntry.tokens += row.b[bucket];
@@ -1249,12 +1502,8 @@ function dailyStats(store, config, sessionFilter) {
 /** 把逐日统计并成一份累计口径：总额、四个桶、按模型、按峰谷、天数与会话数。 */
 function aggregateDaily(days) {
   const models = new Map();
-  const groups = {
-    peak: { key: "peak", label: "peak.group.high", tokens: 0, amount: 0 },
-    off: { key: "off", label: "peak.group.low", tokens: 0, amount: 0 },
-    flat: { key: "flat", label: "peak.group.flat", tokens: 0, amount: 0 }
-  };
-  const flagOf = { p: "peak", o: "off", f: "flat" };
+  const groups = {};
+  for (const band of PEAK_BANDS) groups[band] = { key: band, label: PEAK_BAND_LABEL[band], tokens: 0, amount: 0 };
   const buckets = zeroBuckets();
   const bucketAmounts = zeroBuckets();
   const byProject = new Map();
@@ -1296,10 +1545,9 @@ function aggregateDaily(days) {
       entry.tokens += model.tokens;
       entry.amount += model.amount;
     }
-    for (const flag of ["p", "o", "f"]) {
-      const target = groups[flagOf[flag]];
-      target.tokens += day.groups[flag].tokens;
-      target.amount += day.groups[flag].amount;
+    for (const band of PEAK_BANDS) {
+      groups[band].tokens += day.groups[band].tokens;
+      groups[band].amount += day.groups[band].amount;
     }
   }
   const projectRows = Array.from(byProject.values()).map((item) => {
@@ -1310,7 +1558,7 @@ function aggregateDaily(days) {
   projectRows.sort((left, right) => right.amount - left.amount);
   const modelRows = Array.from(models.values());
   modelRows.sort((left, right) => right.amount - left.amount);
-  const peakRows = [groups.off, groups.peak, groups.flat].filter((row) => row.tokens > 0);
+  const peakRows = PEAK_BANDS.map((band) => groups[band]).filter((row) => row.tokens > 0);
   peakRows.sort((left, right) => right.amount - left.amount);
   const rows = BUCKET_DEFINITIONS.filter((definition) => buckets[definition.key] > 0).map((definition) => ({
     key: definition.key,
@@ -1778,13 +2026,24 @@ function TokenPurseView({ usage, selection, t, sessionId, project, sessionsById 
   };
 
   const peakInfo = rated.peak;
-  const modeText =
+  /* 「窗口内」在加价制里是高峰、在折扣制里是优惠——同一个状态，两种说法。 */
+  const peakKeys =
     peakInfo === null || peakInfo === undefined
       ? null
-      : peakInfo.active
-        ? t("peak.high", { factor: peakInfo.multiplier })
-        : t("peak.low");
+      : peakInfo.mode === "discount"
+        ? { on: "peak.deal", off: "peak.standard", badgeOn: "peak.badgeDeal", badgeOff: "peak.badgeStandard", modeOn: "peak.modeDeal", modeOff: "peak.modeStandard" }
+        : { on: "peak.high", off: "peak.low", badgeOn: "peak.badgeHigh", badgeOff: "peak.badgeLow", modeOn: "peak.modeHigh", modeOff: "peak.modeLow" };
+  const modeText = peakKeys === null ? null : peakInfo.active ? t(peakKeys.on, { factor: peakInfo.multiplier }) : t(peakKeys.off);
 
+  /* 草稿能解析时列出校验问题——非法值不再静默按默认值处理。 */
+  let draftIssues = [];
+  if (editing) {
+    try {
+      draftIssues = validateConfig(JSON.parse(draft));
+    } catch (draftIssueError) {
+      draftIssues = [];
+    }
+  }
   /* 出错时把 V8 的解析位置一并带出来，省得对着整份 JSON 找逗号。 */
   let draftError = null;
   if (invalid) {
@@ -1828,12 +2087,12 @@ function TokenPurseView({ usage, selection, t, sessionId, project, sessionsById 
             {
               className: CSS.modeChip + (peakInfo.active ? " " + CSS.modeChipOn : ""),
               title:
-                (peakInfo.active ? t("peak.modeHigh", { factor: peakInfo.multiplier }) : t("peak.modeLow")) +
+                (peakInfo.active ? t(peakKeys.modeOn, { factor: peakInfo.multiplier }) : t(peakKeys.modeOff)) +
                 " · " +
                 t("peak.note", { windows: peakInfo.windows.join(" / "), timezone: peakInfo.timezone }),
               "aria-hidden": true
             },
-            peakInfo.active ? t("peak.badgeHigh", { factor: peakInfo.multiplier }) : t("peak.badgeLow")
+            peakInfo.active ? t(peakKeys.badgeOn, { factor: peakInfo.multiplier }) : t(peakKeys.badgeOff)
           ),
       h("span", { className: open ? CSS.chevron + " " + CSS.chevronOpen : CSS.chevron, "aria-hidden": true }, "▾")
     ),
@@ -2007,7 +2266,7 @@ function TokenPurseView({ usage, selection, t, sessionId, project, sessionsById 
                           h(
                             "span",
                             { className: CSS.peakChip + (rated.peak.active ? " " + CSS.peakChipOn : "") },
-                            rated.peak.active ? t("peak.high", { factor: rated.peak.multiplier }) : t("peak.low")
+                            rated.peak.active ? t(peakKeys.on, { factor: rated.peak.multiplier }) : t(peakKeys.off)
                           ),
                           h("span", { className: CSS.peakText }, t("peak.note", { windows: rated.peak.windows.join(" / "), timezone: rated.peak.timezone }))
                         ),
@@ -2108,7 +2367,7 @@ function TokenPurseView({ usage, selection, t, sessionId, project, sessionsById 
                           ),
                       dailyRows.slice(0, DAILY_VIEW_DAYS).map((day) => {
                         const detail =
-                          day.sessions.length > 1 || day.models.length > 1 || day.groups.p.tokens > 0 || day.groups.f.tokens > 0;
+                          day.sessions.length > 1 || day.models.length > 1 || day.groups.high.tokens > 0 || day.groups.deal.tokens > 0 || day.groups.flat.tokens > 0;
                         const expanded = detail && openDay === day.day;
                         const cells = [
                           h("span", { className: CSS.breakDay, key: "day" }, formatDayKey(day.day)),
@@ -2134,7 +2393,7 @@ function TokenPurseView({ usage, selection, t, sessionId, project, sessionsById 
                             ? h(
                                 "div",
                                 { className: CSS.breakSub },
-                                day.groups.p.tokens > 0 || day.groups.f.tokens > 0
+                                day.groups.high.tokens > 0 || day.groups.deal.tokens > 0 || day.groups.flat.tokens > 0
                                   ? h(
                                       "div",
                                       { className: CSS.breakRow },
@@ -2142,9 +2401,11 @@ function TokenPurseView({ usage, selection, t, sessionId, project, sessionsById 
                                         "span",
                                         { className: CSS.peakLine },
                                         [
-                                          day.groups.p.tokens > 0 ? t("peak.group.high") + " " + formatMoney(day.groups.p.amount, symbol) : null,
-                                          day.groups.o.tokens > 0 ? t("peak.group.low") + " " + formatMoney(day.groups.o.amount, symbol) : null,
-                                          day.groups.f.tokens > 0 ? t("peak.group.flat") + " " + formatMoney(day.groups.f.amount, symbol) : null
+                                          PEAK_BANDS.map((band) =>
+                                            day.groups[band] === undefined || day.groups[band].tokens <= 0
+                                              ? null
+                                              : t(PEAK_BAND_LABEL[band]) + " " + formatMoney(day.groups[band].amount, symbol)
+                                          )
                                         ]
                                           .filter((part) => part !== null)
                                           .join(" · ")
@@ -2289,6 +2550,23 @@ function TokenPurseView({ usage, selection, t, sessionId, project, sessionsById 
                 invalid
                   ? h("div", { className: CSS.error }, t("rates.invalid") + (draftError === null ? "" : "（" + draftError + "）"))
                   : null,
+                invalid || draftIssues.length === 0
+                  ? null
+                  : h(
+                      "div",
+                      { className: CSS.error },
+                      h("div", { className: CSS.checkTitle }, t("rates.checkTitle", { n: draftIssues.length })),
+                      draftIssues.slice(0, 6).map((issue) =>
+                        h(
+                          "div",
+                          { className: CSS.checkItem, key: issue.path + "\u0000" + issue.key },
+                          (issue.path === "" ? "" : issue.path + " — ") + t(issue.key, issue.params)
+                        )
+                      ),
+                      draftIssues.length > 6
+                        ? h("div", { className: CSS.checkItem }, t("rates.checkMore", { n: draftIssues.length - 6 }))
+                        : null
+                    ),
                 h(
                   "div",
                   { className: CSS.actions },
@@ -2388,6 +2666,25 @@ const zh = {
   "rates.resetConfirm": "再按一次清空",
   "currency.perUsdInvalid": "汇率必须是大于 0 的数字，改动未保存。",
   "rates.hint": "费率单位是「每百万 token」，保存后立即生效。",
+  "rates.checkTitle": "配置有 {n} 处问题（下面按默认值处理）",
+  "rates.checkMore": "还有 {n} 条……",
+  "check.object": "应该是一个 JSON 对象",
+  "check.peakForm": "应是对象，或 false（表示不分时）",
+  "check.mode": "只能是 \"surcharge\" 或 \"discount\"",
+  "check.multiplierMissing": "缺少倍率，这个方案不会生效",
+  "check.perBucket": "分桶倍率必须四个桶都给全",
+  "check.positive": "必须是正数",
+  "check.surcharge": "加价倍率必须 > 1；打折请用 \"discount\"",
+  "check.discount": "折扣倍率必须在 0 与 1 之间",
+  "check.windowsEmpty": "是空数组，没有任何时刻会进入窗口",
+  "check.windowText": "无法解析 {value}，形如 \"Mon-Fri 09:00-12:00\"",
+  "check.windowsArray": "应该是一个字符串数组",
+  "check.timezoneUnknown": "未知时区 {value}",
+  "check.timezoneText": "应该是一个 IANA 时区字符串",
+  "check.modelsObject": "应该是一个对象",
+  "check.rateNumber": "必须是 ≥0 的数字",
+  "check.currencyCode": "应该是币种代码字符串",
+  "check.perUsd": "必须 > 0",
   "rates.save": "保存",
   "rates.reset": "恢复默认",
   "rates.invalid": "JSON 格式有误，请检查后重试。",
@@ -2434,8 +2731,16 @@ const zh = {
   "peak.splitNone": "本会话没有分时计费的消耗",
   "daily.empty": "还没有历史记录",
   "peak.splitHint": "本会话按当时生效的费率档位汇总（高峰 / 低峰 / 平价）",
+  "peak.deal": "优惠 ×{factor}",
+  "peak.standard": "标准价",
+  "peak.badgeDeal": "惠×{factor}",
+  "peak.badgeStandard": "标准",
+  "peak.modeDeal": "当前处于优惠时段，单价 ×{factor}",
+  "peak.modeStandard": "当前按标准价计费",
   "peak.group.high": "高峰",
   "peak.group.low": "低峰",
+  "peak.group.deal": "优惠",
+  "peak.group.standard": "标准价",
   "peak.group.flat": "平价",
   "spark.summary": "近 {days} 天 · 最高 {max} · 日均 {avg}",
   "spark.aria": "近 {days} 天花费折线图，最高 {max}",
@@ -2463,6 +2768,25 @@ const en = {
   "rates.resetConfirm": "Click again to clear",
   "currency.perUsdInvalid": "The exchange rate must be a number greater than 0 — nothing was saved.",
   "rates.hint": "Rates are per million tokens and take effect as soon as you save.",
+  "rates.checkTitle": "{n} configuration problem(s) — the values below fall back to defaults",
+  "rates.checkMore": "{n} more…",
+  "check.object": "should be a JSON object",
+  "check.peakForm": "should be an object, or false to opt out of time-of-day pricing",
+  "check.mode": "must be \"surcharge\" or \"discount\"",
+  "check.multiplierMissing": "needs a multiplier, otherwise the scheme does nothing",
+  "check.perBucket": "per-bucket multipliers must list all four buckets",
+  "check.positive": "must be a positive number",
+  "check.surcharge": "a surcharge multiplier must be > 1; use \"discount\" to make the window cheaper",
+  "check.discount": "a discount multiplier must be between 0 and 1",
+  "check.windowsEmpty": "is empty — no moment will ever be in the window",
+  "check.windowText": "cannot parse {value}; expected e.g. \"Mon-Fri 09:00-12:00\"",
+  "check.windowsArray": "should be an array of strings",
+  "check.timezoneUnknown": "unknown timezone {value}",
+  "check.timezoneText": "should be an IANA timezone string",
+  "check.modelsObject": "should be an object",
+  "check.rateNumber": "must be a number ≥ 0",
+  "check.currencyCode": "should be a currency-code string",
+  "check.perUsd": "must be > 0",
   "rates.save": "Save",
   "rates.reset": "Reset",
   "rates.invalid": "Invalid JSON — please check and retry.",
@@ -2509,8 +2833,16 @@ const en = {
   "peak.splitNone": "No time-of-day priced usage in this session",
   "daily.empty": "No history yet",
   "peak.splitHint": "This session grouped by the rate bracket that applied (peak / off-peak / flat)",
+  "peak.deal": "Discount ×{factor}",
+  "peak.standard": "Standard",
+  "peak.badgeDeal": "Deal×{factor}",
+  "peak.badgeStandard": "Std",
+  "peak.modeDeal": "Currently in a discount window, unit price ×{factor}",
+  "peak.modeStandard": "Currently at the standard price",
   "peak.group.high": "Peak",
   "peak.group.low": "Off-peak",
+  "peak.group.deal": "Discount",
+  "peak.group.standard": "Standard",
   "peak.group.flat": "Flat",
   "spark.summary": "Last {days} days · peak {max} · avg {avg}",
   "spark.aria": "Spend over the last {days} days, peak {max}",

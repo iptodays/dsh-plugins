@@ -166,21 +166,24 @@ A ready-made snippet ships as **cordis.patch.yml**.
 Built-in rates come from two **traceable** sources and are quoted in **CNY per
 million tokens**; each entry carries its own **currency** (CNY by default):
 
-    # DeepSeek official
-    deepseek-official/deepseek-flash            input 1.00   cacheRead 0.020   cacheWrite 1.00   output 4.00    peakMultiplier 2
-    deepseek-official/deepseek-v4-flash         input 1.00   cacheRead 0.020   cacheWrite 1.00   output 4.00    peakMultiplier 2
-    deepseek-official/deepseek-v4-pro           input 4.50   cacheRead 0.150   cacheWrite 4.50   output 13.50   peakMultiplier 2
+    # DeepSeek official                          input   cacheRead   cacheWrite   output
+    deepseek-official/deepseek-flash              1.00    0.020       1.00         4.00
+    deepseek-official/deepseek-v4-flash           1.00    0.020       1.00         4.00
+    deepseek-official/deepseek-v4-pro             4.50    0.150       4.50        13.50
 
-    # packyapi (official CNY x group multiplier)
-    packyapi/deepseek-flash             x0.8    input 0.80   cacheRead 0.016   cacheWrite 0.80   output 3.20    peakMultiplier 2
-    packyapi/deepseek-v4-flash-vision-exp x0.8  input 0.80   cacheRead 0.016   cacheWrite 0.80   output 3.20    peakMultiplier 2
-    packyapi/deepseek-v4-flash          x0.5    input 0.50   cacheRead 0.010   cacheWrite 0.50   output 2.00    peakMultiplier 2
-    packyapi/deepseek-v4-pro            x0.5    input 2.25   cacheRead 0.075   cacheWrite 2.25   output 6.75    peakMultiplier 2
+    # packyapi (official CNY x group multiplier)  group
+    packyapi/deepseek-flash                 x0.8   0.80    0.016       0.80         3.20
+    packyapi/deepseek-v4-flash-vision-exp   x0.8   0.80    0.016       0.80         3.20
+    packyapi/deepseek-v4-flash              x0.5   0.50    0.010       0.50         2.00
+    packyapi/deepseek-v4-pro                x0.5   2.25    0.075       2.25         6.75
 
 - **deepseek-official** is DeepSeek's list price (api-docs.deepseek.com/zh-cn/quick_start/pricing).
 - **packyapi** discounts the official CNY list: x0.8 in the deepseek-officially group and
   x0.5 in the deepseek-sale group. Its page renders a `$` glyph, but the numbers are the
   official yuan price x multiplier (e.g. v4-pro list ¥4.5 -> $2.25), i.e. billed in CNY.
+- Both platforms currently charge **peak = idle x2** on weekdays 09:00-12:00 and
+  14:00-18:00 Asia/Shanghai. The multiplier lives in the **providers** block (below), so it is
+  not repeated per model; window, zone and direction can be set per platform or per model.
 - Peak = 2x off-peak, weekdays 09:00-12:00 and 14:00-18:00 Beijing time.
 - The official docs now serve deepseek-v4-flash / -vision-exp from V4.1-Flash and bill
   them at Flash prices; deepseek-v4-pro is scheduled to route there after 2026-09-14 12:00.
@@ -200,7 +203,7 @@ instead of pretending to be exact.
 Override either way:
 
 1. **Recommended**: open the badge → **Edit rates**, edit the JSON, save. Stored under the
-   **dsh.token-purse.config.v2** localStorage key (v1 migrates on read).
+   **dsh.token-purse.config.v3** localStorage key (v2 and v1 migrate on read).
 2. Edit **DEFAULT_MODELS** / **FALLBACK_RATES** at the top of **src/client.js**,
    then run **npm run build**.
 
@@ -213,9 +216,17 @@ Config shape:
         "timezone": "Asia/Shanghai",
         "windows": ["Mon-Fri 09:00-12:00", "Mon-Fri 14:00-18:00"]
       },
+      "providers": {
+        "packyapi": { "peak": { "mode": "surcharge", "multiplier": 2 } },
+        "deepseek-official": { "peak": { "mode": "surcharge", "multiplier": 2 } }
+      },
       "models": {
-        "packyapi/deepseek-flash": { "currency": "CNY", "input": 0.80, "cacheRead": 0.016, "cacheWrite": 0.80, "output": 3.20, "peakMultiplier": 2 },
-        "deepseek-official/deepseek-flash": { "currency": "CNY", "input": 1, "cacheRead": 0.02, "cacheWrite": 1, "output": 4, "peakMultiplier": 2 },
+        "packyapi/deepseek-flash": { "currency": "CNY", "input": 0.80, "cacheRead": 0.016, "cacheWrite": 0.80, "output": 3.20 },
+        "some-gateway/night-model": {
+          "currency": "CNY", "input": 1, "output": 4,
+          "peak": { "mode": "discount", "multiplier": 0.25, "windows": ["Mon-Sun 00:30-08:30"] }
+        },
+        "flat-model": { "currency": "CNY", "input": 0.5, "output": 1, "peak": false },
         "my-usd-model": { "currency": "USD", "input": 0.1, "output": 0.2 }
       }
     }
@@ -229,7 +240,16 @@ Config shape:
   **currency.perUsd**. Ignore it if every entry is in CNY.
 - **peak.timezone**: IANA zone, e.g. **Asia/Shanghai**. **peak.windows** is a list of
   weekday-and-time ranges, accepting **Mon-Fri**, **Sat,Sun** and **\***. Entries
-  that fail to parse are dropped; if none parse, there is no peak pricing.
+  that fail to parse are dropped; if none parse, there is no peak pricing. The **top-level
+  peak is only the default schedule** — on its own it never makes any entry peak-priced; that
+  takes a multiplier.
+- **providers**: platform-level schemes keyed by the provider id (the one in settings.yaml),
+  each **{ "peak": { "mode": ..., "multiplier": ... } }**. Timezone and windows may be omitted,
+  in which case they are inherited from the top level. When several models on one platform share
+  a scheme, writing it here beats repeating it per model.
+- **models[].peak** has three states: **absent** (inherit provider / top level), **false**
+  (explicitly flat — stop inheriting), or an **object** (its own scheme, whose fields can still
+  be inherited).
 - **models**: keys may be **provider/model** (recommended) or a bare lowercase
   model id. Matching is provider/model exact, then model exact, then longest model
   substring, then fallback; provider-prefixed keys never take part in substring
@@ -238,21 +258,57 @@ Config shape:
 - **models[].currency**: the currency that entry is quoted in (CNY by default). When
   providers differ, the plugin converts through **fx** to USD and then applies
   **currency.perUsd** for display.
-- Missing **cacheRead** / **cacheWrite** fall back to **input**. A missing
-  **peakMultiplier** (or one ≤ 1) means that model has no peak pricing.
+- Missing **cacheRead** / **cacheWrite** fall back to **input**.
+- **peak.mode**: **surcharge** (the window costs more; multiplier must be **> 1**) or
+  **discount** (the window costs less; multiplier must be **between 0 and 1**). The multiplier
+  always applies **inside** the window; mode only sets the direction and whether the UI calls it
+  peak/off-peak or discount/standard.
+- **peak.multiplier**: a scalar, or an object listing **all four buckets**
+  (**{ "input": 2, "cacheRead": 1, "cacheWrite": 2, "output": 4 }**). A missing bucket is
+  **reported**, not silently treated as 1 — a silent default is how you misprice.
+- The old **peakMultiplier** still works: **≠1** is equivalent to a surcharge scheme, **1** to
+  flat pricing.
+- The editor lists **configuration problems** (path + reason) beneath the JSON. Invalid values
+  still fall back to something workable, but never silently: 0.1.x clamped
+  **peakMultiplier: 0.5** to 1, which is exactly that trap.
 
 ### Time-of-day pricing (peak)
 
-DeepSeek official (and packyapi, which resells it) charges double during weekdays
-**09:00-12:00** and **14:00-18:00** (Asia/Shanghai). Enable it by giving a model a
-**peakMultiplier** and putting the ranges in the top-level **peak.windows**.
+DeepSeek official (and packyapi, which resells it) currently charges double during weekdays
+**09:00-12:00** and **14:00-18:00** (Asia/Shanghai).
+
+Schemes are **inheritable** across three layers — **model entry → providers[platform] → top-level
+peak** — with field-level fallback. The usual shape is "the platform sets the window and
+multiplier; individual models are the exception":
+
+    "providers": {
+      "packyapi": { "peak": { "mode": "surcharge", "multiplier": 2 } }
+    },
+    "models": {
+      "night-gateway/night-model": {
+        "input": 1, "output": 4,
+        "peak": { "mode": "discount", "multiplier": 0.25, "windows": ["Mon-Sun 00:30-08:30"] }
+      },
+      "flat-model": { "input": 0.5, "output": 1, "peak": false }
+    }
+
+Why three layers: **different platforms compute peak differently, and so do models within one
+platform** — some add a daytime surcharge, others discount at night; the directions are opposite
+and the windows do not overlap. So window, zone, direction and multiplier must each be settable
+per platform or per model; a single global setting cannot express it.
+
+- **mode** sets the direction: **surcharge** costs more inside the window (multiplier > 1),
+  **discount** costs less (multiplier between 0 and 1). The multiplier always applies **inside**
+  the window; outside it you pay the base price.
+- **multiplier** can be per bucket, but the object must list all four; the editor flags any that
+  are missing.
 
 - Ranges are evaluated in **peak.timezone**, independent of your system zone, and
   are **half-open** (12:00 sharp already counts as off-peak); they only apply on the
   listed weekdays.
-- The **badge itself shows the current mode**: peak-priced models get a small pill next to the
-  amount reading **Off** or **Peak×2** (hover for the windows), and the panel repeats it under
-  **Current pricing**.
+- The **badge itself shows the current mode**: a small pill next to the amount reads **Off** or
+  **Peak×2** under a surcharge scheme, and **Deal×0.25** or **Std** under a discount scheme
+  (hover for the windows); the panel repeats it under **Current pricing**.
 - Cost is split by **when each usage increment happened**: the plugin appends every
   increase of the session totals with a timestamp to
   **dsh.token-purse.ledger.v1:<sessionId>** and prices each entry with its own
@@ -262,15 +318,18 @@ DeepSeek official (and packyapi, which resells it) charges double during weekday
   while the page was closed, has no timestamp and is priced at the bracket in effect
   when the panel first opened. A refresh does not clear the ledger (it is persisted
   per session id).
+- A second known limit: amounts are recomputed from the **current** configuration, so editing a
+  rate or a peak scheme **rewrites history**. If a platform swaps its whole price list on a date
+  (e.g. the official 2026-09-14 routing change), that can only be calibrated by hand.
 
 ## Peak / off-peak spend
 
 The **Peak / off-peak** section groups the **current session** by the rate bracket that was in
 effect when each increment was observed:
 
-- **Peak**: inside a configured time window and the model has `peakMultiplier > 1`.
-- **Off-peak**: same model, outside the window.
-- **Flat**: the model has no time-of-day pricing (`peakMultiplier` is 1).
+- **Peak / Discount**: inside a configured window, under a surcharge / discount scheme.
+- **Off-peak / Standard**: the same model, outside the window.
+- **Flat**: the model has no scheme at all (`peak: false`, or simply absent) — one price all day.
 
 Each row shows tokens, amount, and a share bar. The section appears as soon as a session has any
 peak or off-peak spend; if everything is flat-priced it is omitted as noise. The three amounts
@@ -394,6 +453,26 @@ otherwise refresh the page.
 
 ## Changelog
 
+- **0.2.0**: peak pricing became a **three-layer, inheritable scheme**; the stored config moved to
+  **dsh.token-purse.config.v3** (v2 and v1 migrate on read).
+  - A scheme is `{ "mode": "surcharge" | "discount", "multiplier": <scalar or four buckets>,
+    "timezone"?, "windows"? }`, resolved **model → providers.<id> → top-level peak** with field-level
+    fallback. **A multiplier is what turns pricing on**: a top-level schedule alone never does.
+    `"peak": false` means explicitly flat, so a flat model can sit under a peak-priced platform.
+    **mode** sets the direction — a surcharge multiplier must be > 1, a discount one between 0 and 1 —
+    and the multiplier always applies **inside** the window.
+  - **providers** is a new top-level block keyed by the provider id DSH reports (the same ids as
+    settings.yaml), so a platform's scheme is written once instead of per model. It is also why the
+    storage key had to change: mergeConfig drops unknown top-level keys.
+  - The editor now **lists configuration problems** (path + reason, localised) beneath the JSON.
+    Invalid values keep a workable fallback but are never silent again — 0.1.x clamped
+    `peakMultiplier: 0.5` to 1 and said nothing. The old `peakMultiplier` is still accepted:
+    `≠1` means a surcharge scheme, `1` means flat.
+  - The peak/off-peak section is **mode-aware** (five bands: high / low / deal / standard / flat), and
+    the badge reads *peak ×2 / off* or *deal ×0.25 / standard*.
+  - Not done, on purpose: no `effectiveFrom` price switching (a platform that swaps its whole price
+    list on a date still needs manual recalibration) and no per-hour price tables. For a per-bucket
+    multiplier the daily and aggregate views show the **input** bucket as the representative.
 - **0.1.22**: rate editing went **back to JSON only** — a structured table (one row per
   provider/model plus four number inputs) does not fit a 320px panel. The first attempt put fixed
   76px inputs on 52px tracks; switching to fluid inputs **still overlapped**, because box-sizing

@@ -111,7 +111,7 @@ function loadInternals(react, now, extra) {
   const sandbox = makeSandbox(react, extra, now);
   const source =
     readFileSync(join(root, "src", "client.js"), "utf8") +
-    "\nexports.__test = { rateUsage, rateLedger, resolveRates, mergeConfig, formatMoney, formatTokens, formatRate, DEFAULT_CONFIG, TokenPurseView, matchCurrencyPreset, findCurrencyPreset, fetchUsdRate, parsePeakWindow, parsePeak, isPeakAt, ratesAt, emptyLedger, syncLedger, migrateConfigV1, rateSource, CURRENCY_PRESETS, localDayKey, sessionModelRows, formatModelLabel, sharePercent, legacyCurrencyConfig, migrateLegacyCurrency, readConfig, dailySeries, sparklinePoints, sparklineLine, sparklineArea, SPARK_DAYS, aggregateDaily, sessionTone, SESSION_TONES, splitByPeak, ledgerSegments, priceSegment, normalizePeakFlag, sessionDayRows, mergeSessionDayRows, dailyStats, normalizeDaily, emptyDaily, formatDayKey };\n";
+    "\nexports.__test = { rateUsage, rateLedger, resolveRates, mergeConfig, formatMoney, formatTokens, formatRate, DEFAULT_CONFIG, TokenPurseView, matchCurrencyPreset, findCurrencyPreset, fetchUsdRate, parsePeakWindow, isPeakAt, emptyLedger, syncLedger, migrateConfigV1, rateSource, CURRENCY_PRESETS, localDayKey, sessionModelRows, formatModelLabel, sharePercent, legacyCurrencyConfig, migrateLegacyCurrency, readConfig, dailySeries, sparklinePoints, sparklineLine, sparklineArea, SPARK_DAYS, aggregateDaily, sessionTone, SESSION_TONES, splitByPeak, ledgerSegments, priceSegment, normalizePeakFlag, sessionDayRows, mergeSessionDayRows, dailyStats, normalizeDaily, emptyDaily, formatDayKey, validateConfig, normalizeRates, peakSchemeFor, peakSchedule, ratesAt, peakBand };\n";
   vm.runInContext(source, sandbox);
   return sandbox.exports.__test;
 }
@@ -194,7 +194,7 @@ check("fetchUsdRate unknown -> null", (await internals.fetchUsdRate("XYZ")) === 
 const peakWindow = internals.parsePeakWindow("Mon-Fri 09:00-12:00");
 check("parsePeakWindow days+clock", peakWindow !== null && peakWindow.days.has(1) && peakWindow.days.has(5) && !peakWindow.days.has(6) && peakWindow.from === 540 && peakWindow.to === 720);
 check("parsePeakWindow invalid -> null", internals.parsePeakWindow("nonsense") === null && internals.parsePeakWindow("Mon-Fri 12:00-09:00") === null);
-const peak = internals.parsePeak(config);
+const peak = internals.peakSchedule(config.peak.windows, config.peak.timezone);
 check("isPeakAt Mon 09:00 CST", internals.isPeakAt(monday0900Utc, peak) === true);
 check("isPeakAt Mon 12:00 CST off", internals.isPeakAt(monday1200Utc, peak) === false);
 check("isPeakAt Mon 14:30 CST", internals.isPeakAt(monday1430Utc, peak) === true);
@@ -240,7 +240,7 @@ const legacy = internals.migrateConfigV1(JSON.parse(JSON.stringify({
 check("migrate drops legacy flash", legacy.models["deepseek-flash"] === undefined && legacy.models.custom.input === 5);
 check("migrate keeps edited flash", internals.migrateConfigV1({ models: { "deepseek-flash": { input: 0.5, output: 0.9 } } }).models["deepseek-flash"].input === 0.5);
 const migrated = internals.mergeConfig(internals.DEFAULT_CONFIG, legacy);
-check("migrated config gains packyapi flash", Math.abs(migrated.models["packyapi/deepseek-flash"].input - 0.8) < 1e-9 && migrated.models["packyapi/deepseek-flash"].peakMultiplier === 2);
+check("migrated config gains packyapi flash", Math.abs(migrated.models["packyapi/deepseek-flash"].input - 0.8) < 1e-9 && migrated.providers.packyapi.peak.multiplier === 2 && migrated.models["packyapi/deepseek-flash"].peak === undefined);
 
 /* ── 1f. provider 专属费率 ──────────────────────────────────────────── */
 
@@ -286,12 +286,89 @@ const bracketRows = internals.splitByPeak(splitLedger, { uncachedInputTokens: 20
 check(
   "splitByPeak separates peak from off-peak",
   bracketRows.length === 2 &&
-    bracketRows[0].key === "peak" &&
+    bracketRows[0].key === "high" &&
     Math.abs(bracketRows[0].amount - 2) < 1e-9 &&
     bracketRows[0].tokens === 1000000 &&
-    bracketRows[1].key === "off" &&
+    bracketRows[1].key === "low" &&
     Math.abs(bracketRows[1].amount - 1) < 1e-9
 );
+
+/* ── 1g. v3 分时方案：三层回落、两种方向、分桶倍率 ─────────────────── */
+
+const schemeConfig = (models, providers, peak) =>
+  internals.mergeConfig(internals.DEFAULT_CONFIG, {
+    peak: peak === undefined ? { timezone: "Asia/Shanghai", windows: ["Mon-Fri 09:00-12:00"] } : peak,
+    providers: providers === undefined ? {} : providers,
+    models: models === undefined ? {} : models
+  });
+/* 2025-01-06 是周一：02:00Z = 10:00 北京（窗口内），00:00Z = 08:00 北京（窗口外）。 */
+const IN_WINDOW = Date.UTC(2025, 0, 6, 2, 0, 0);
+const OUT_WINDOW = Date.UTC(2025, 0, 6, 0, 0, 0);
+
+const providerScheme = schemeConfig({ "px/m": { input: 1, output: 2 } }, { px: { peak: { mode: "surcharge", multiplier: 3 } } });
+check(
+  "provider scheme covers every model that has none of its own",
+  internals.ratesAt(providerScheme, "m", IN_WINDOW, "px").input === 3 &&
+    internals.ratesAt(providerScheme, "m", OUT_WINDOW, "px").input === 1
+);
+const modelScheme = schemeConfig(
+  { "px/m": { input: 1, output: 2, peak: { mode: "surcharge", multiplier: 5 } } },
+  { px: { peak: { mode: "surcharge", multiplier: 3 } } }
+);
+check("model scheme wins over provider scheme", internals.ratesAt(modelScheme, "m", IN_WINDOW, "px").input === 5);
+check(
+  "peak:false opts out of the provider scheme",
+  internals.ratesAt(schemeConfig({ "px/m": { input: 1, output: 2, peak: false } }, { px: { peak: { mode: "surcharge", multiplier: 3 } } }), "m", IN_WINDOW, "px").input === 1
+);
+/* 字段级继承：模型只给方向与倍率，时段来自顶层 */
+const discountScheme = schemeConfig({ "px/m": { input: 1, output: 4, peak: { mode: "discount", multiplier: 0.25 } } });
+const discounted = internals.ratesAt(discountScheme, "m", IN_WINDOW, "px");
+check(
+  "discount mode makes the window cheaper, and only the window",
+  Math.abs(discounted.input - 0.25) < 1e-9 &&
+    Math.abs(discounted.output - 1) < 1e-9 &&
+    Math.abs(internals.ratesAt(discountScheme, "m", OUT_WINDOW, "px").input - 1) < 1e-9
+);
+check("discount window reports the deal band", internals.peakBand(internals.peakSchemeFor(discountScheme, "px", internals.resolveRates(discountScheme, "m", "px")), "in") === "deal");
+const bucketScheme = schemeConfig({ "px/m": { input: 1, output: 2, peak: { mode: "surcharge", multiplier: { input: 2, cacheRead: 1, cacheWrite: 2, output: 4 } } } });
+const bucketPeak = internals.ratesAt(bucketScheme, "m", IN_WINDOW, "px");
+check("per-bucket multiplier scales each bucket", bucketPeak.input === 2 && bucketPeak.output === 8 && bucketPeak.cacheRead === 1);
+check(
+  "a scheme with no usable window is flat, not a crash",
+  internals.ratesAt(schemeConfig({ "px/m": { input: 1, peak: { mode: "surcharge", multiplier: 2 } } }, {}, { timezone: "Asia/Shanghai", windows: [] }), "m", IN_WINDOW, null).input === 1
+);
+/* 旧 peakMultiplier：不再静默夹取 */
+const legacyRates = internals.normalizeRates({ input: 1, peakMultiplier: 2 });
+check("legacy peakMultiplier becomes a surcharge scheme", legacyRates.peak.mode === "surcharge" && legacyRates.peak.multiplier === 2);
+check("legacy peakMultiplier 1 becomes flat", internals.normalizeRates({ input: 1, peakMultiplier: 1 }).peak === false);
+check("legacy sub-1 multiplier is preserved, not clamped to 1", internals.normalizeRates({ input: 1, peakMultiplier: 0.5 }).peak.multiplier === 0.5);
+
+/* ── 1h. 配置校验：只报不改 ──────────────────────────────────────── */
+
+const issueKeys = (parsed) => internals.validateConfig(parsed).map((issue) => issue.path + "=" + issue.key);
+check("validation accepts the shipped defaults", internals.validateConfig(JSON.parse(JSON.stringify(internals.DEFAULT_CONFIG))).length === 0);
+check("validation accepts a bare schedule at the top level", issueKeys({ peak: { timezone: "Asia/Shanghai", windows: ["Mon-Fri 09:00-12:00"] } }).length === 0);
+check(
+  "validation flags a sub-1 surcharge multiplier",
+  issueKeys({ models: { m: { input: 1, peak: { mode: "surcharge", multiplier: 0.5 } } } }).indexOf("models.m.peak.multiplier=check.surcharge") !== -1
+);
+check(
+  "validation flags a discount multiplier above 1",
+  issueKeys({ models: { m: { input: 1, peak: { mode: "discount", multiplier: 2 } } } }).indexOf("models.m.peak.multiplier=check.discount") !== -1
+);
+check(
+  "validation flags an incomplete per-bucket multiplier",
+  issueKeys({ models: { m: { input: 1, peak: { mode: "surcharge", multiplier: { input: 2, output: 3 } } } } }).indexOf("models.m.peak.multiplier.cacheRead=check.perBucket") !== -1
+);
+check(
+  "validation flags an unparseable window",
+  issueKeys({ peak: { timezone: "Asia/Shanghai", windows: ["Mon-Fri 9am-noon"] } }).indexOf("peak.windows=check.windowText") !== -1
+);
+check(
+  "validation flags a scheme that forgot its multiplier",
+  issueKeys({ models: { m: { input: 1, peak: { mode: "discount" } } } }).indexOf("models.m.peak.multiplier=check.multiplierMissing") !== -1
+);
+check("validation flags a non-object config", issueKeys(42).indexOf("=check.object") !== -1);
 check("splitByPeak covers the total", Math.abs(bracketRows.reduce((sum, row) => sum + row.amount, 0) - splitRated.amount) < 1e-9);
 check("splitByPeak falls back to flat", internals.splitByPeak(null, { uncachedInputTokens: 1000000 }, { next: { model: "deepseek-flash" } }, internals.mergeConfig(config, { models: { "deepseek-flash": { input: 1 } } }), monday1200Utc.getTime())[0].key === "flat");
 check("normalizePeakFlag keeps legacy booleans", internals.normalizePeakFlag(1) === "p" && internals.normalizePeakFlag(0) === "o" && internals.normalizePeakFlag("f") === "f" && internals.normalizePeakFlag(undefined) === "o");
@@ -447,19 +524,19 @@ const peakDayStore = internals.mergeSessionDayRows(
 const peakDayStats = internals.dailyStats(peakDayStore, ledgerConfig);
 check(
   "dailyStats groups one day by bracket",
-  Math.abs(peakDayStats[0].groups.p.amount - 2) < 1e-9 &&
-    Math.abs(peakDayStats[0].groups.o.amount - 1) < 1e-9 &&
-    Math.abs(peakDayStats[0].groups.f.amount - 1) < 1e-9 &&
-    peakDayStats[0].groups.p.tokens === 1000000 &&
-    Math.abs(peakDayStats[0].amount - peakDayStats[0].groups.p.amount - peakDayStats[0].groups.o.amount - peakDayStats[0].groups.f.amount) < 1e-9
+  Math.abs(peakDayStats[0].groups.high.amount - 2) < 1e-9 &&
+    Math.abs(peakDayStats[0].groups.low.amount - 1) < 1e-9 &&
+    Math.abs(peakDayStats[0].groups.flat.amount - 1) < 1e-9 &&
+    peakDayStats[0].groups.high.tokens === 1000000 &&
+    Math.abs(peakDayStats[0].amount - peakDayStats[0].groups.high.amount - peakDayStats[0].groups.low.amount - peakDayStats[0].groups.flat.amount) < 1e-9
 );
 
 const aggPeak = internals.aggregateDaily(internals.dailyStats(peakDayStore, ledgerConfig));
 check(
   "aggregateDaily merges brackets",
   aggPeak.peakRows.length === 3 &&
-    aggPeak.peakRows[0].key === "peak" &&
-    aggPeak.peakRows[1].key === "off" &&
+    aggPeak.peakRows[0].key === "high" &&
+    aggPeak.peakRows[1].key === "low" &&
     Math.abs(aggPeak.peakRows.reduce((sum, row) => sum + row.amount, 0) - aggPeak.amount) < 1e-9 &&
     Math.abs(aggPeak.amount - 4) < 1e-9
 );
