@@ -17,7 +17,8 @@ output), their token counts and subtotals, plus an inline rate editor.
 - Idle: a compact **≈$0.0123** badge; the **≈** marks it as an estimate.
 - Click: a dropdown listing each bucket, the priced model and the total token count.
 - Bottom of the panel: **Edit rates** — the currency / FX rows plus a **JSON** block that
-  overrides the rates. Stored in the browser's localStorage.
+  overrides the rates; **configuration problems** (path + reason) are listed beneath the JSON, so
+  invalid values fall back to something workable but never silently. Stored in localStorage.
 - Nothing renders until the session has billed at least one token, so an empty
   session stays clean.
 
@@ -32,7 +33,8 @@ rendered at a time**. From top to bottom:
 2. the **scope**: Session / All time;
 3. **token buckets** (input / cache read / output + total);
 4. the **view tabs** — Models / Peak / Daily, plus **Projects** in the All time scope —
-   only the active one is rendered; the current bracket (peak / off-peak, window and
+   only the active one is rendered; the current bracket (peak / off-peak under a surcharge scheme,
+discount / standard under a discount one, plus the window and
    multiplier) lives in the **Peak** tab;
 5. **Edit rates**.
 
@@ -106,7 +108,8 @@ honours `prefers-reduced-motion: reduce`, which switches every animation off.
    then model substring, then fallback. When nothing matches it shows **Unpriced** and
    estimates with the generic fallback.
 4. cost = Σ(bucket tokens × USD per million tokens) × currency factor, with each
-   bucket priced at its off-peak or peak rate.
+   bucket priced at its base rate, then scaled by the scheme in effect at that moment — the
+multiplier applies inside the window and the base price outside it.
 5. It is all local: config and the incremental ledger live in localStorage. The only
    network call is one request to a public FX endpoint when you click **Auto-fetch
    rate** (or turn auto on) — no session data is ever sent.
@@ -184,7 +187,6 @@ million tokens**; each entry carries its own **currency** (CNY by default):
 - Both platforms currently charge **peak = idle x2** on weekdays 09:00-12:00 and
   14:00-18:00 Asia/Shanghai. The multiplier lives in the **providers** block (below), so it is
   not repeated per model; window, zone and direction can be set per platform or per model.
-- Peak = 2x off-peak, weekdays 09:00-12:00 and 14:00-18:00 Beijing time.
 - The official docs now serve deepseek-v4-flash / -vision-exp from V4.1-Flash and bill
   them at Flash prices; deepseek-v4-pro is scheduled to route there after 2026-09-14 12:00.
 - Models not in the table (e.g. other packyapi groups) show **Unpriced** rather than a guess.
@@ -322,22 +324,24 @@ per platform or per model; a single global setting cannot express it.
   rate or a peak scheme **rewrites history**. If a platform swaps its whole price list on a date
   (e.g. the official 2026-09-14 routing change), that can only be calibrated by hand.
 
-## Peak / off-peak spend
+## Peak spend
 
-The **Peak / off-peak** section groups the **current session** by the rate bracket that was in
-effect when each increment was observed:
+The **Peak** section groups the **current session** by the rate bracket that was in
+effect when each increment was observed (surcharge schemes use peak / off-peak, discount schemes
+discount / standard, and there is always a flat group):
 
 - **Peak / Discount**: inside a configured window, under a surcharge / discount scheme.
 - **Off-peak / Standard**: the same model, outside the window.
 - **Flat**: the model has no scheme at all (`peak: false`, or simply absent) — one price all day.
 
 Each row shows tokens, amount, and a share bar. The section appears as soon as a session has any
-peak or off-peak spend; if everything is flat-priced it is omitted as noise. The three amounts
-always sum to the total at the top of the panel.
+time-of-day spend; if everything is flat-priced it is omitted as noise. The group amounts always
+sum to the total at the top of the panel.
 
-Matching that, any **day with peak (or flat) usage** in **Daily** gets an extra line under the
-date — `Peak ¥x · Off-peak ¥y` — so you can see whether moving work off-peak actually paid off
-over weeks.
+Matching that, any **day with banded usage** in **Daily** gets an extra line under the date
+listing **whichever bands actually occurred** (`Peak ¥2.00 · Off-peak ¥1.00`, or
+`Discount ¥0.50 · Standard ¥1.00` under a discount scheme) — so you can see whether moving work
+off-peak actually paid off over weeks.
 
 ## Daily stats
 
@@ -424,7 +428,7 @@ arbitrary symbol or rate, use **Edit rates** and set **currency.symbol** /
 - **Numbers disagree with my bill?** The official and packyapi figures both come from
   public price lists, but your group, gateway markup, and whether cache write is
   billed can all differ — use **Edit rates** to calibrate against your own bill.
-- **How are sessions that cross peak/off-peak priced?** See **Time-of-day pricing**
+- **How are sessions that cross brackets priced?** See **Time-of-day pricing**
   above: observed usage is split by the moment it happened; history from before the
   plugin was installed is priced at the bracket in effect when the panel opened.
 
