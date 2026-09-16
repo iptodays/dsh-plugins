@@ -397,6 +397,13 @@ otherwise refresh the page.
 
 ## Changelog
 
+- **0.1.21**: fixed the **rate table overflowing**. 0.1.20 built it as "1fr + four 52px
+  columns" while the inputs kept their fixed 76px width — 24px wider than their track, so the
+  four number boxes **overlapped each other** and overflowed the panel (whose overflow-x:hidden
+  simply clipped the right side); the key's 1fr track also lacked min-width:0, and nowrap made
+  its minimum width the full string (37 characters, ~222px), for a row ~442px wide inside a
+  296px content box. The key now has its own line and the four columns are fluid, with inputs at
+  width:100%; the duplicate caption above the column labels is gone.
 - **0.1.20**: cut the **standing prose** and rebuilt the **rate editor**, both per the critique.
   - The coverage caveat dropped from a 42px paragraph to a 10px footnote under the total,
     minus the part that duplicated the subtitle; "estimate, not a bill" moved into the

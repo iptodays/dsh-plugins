@@ -152,7 +152,7 @@ async function fetchUsdRate(code) {
 
 const CSS_TEXT =
   ".TPurse_root{position:relative;display:inline-flex;align-items:center}" +
-  ".TPurse_srOnly{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.TPurse_jsonToggle{align-self:flex-start;margin-top:8px}.TPurse_rateTable{display:flex;flex-direction:column;gap:5px;margin-top:8px}.TPurse_rateRow{display:grid;grid-template-columns:1fr 52px 52px 52px 52px;gap:4px;align-items:center}.TPurse_rateHead{margin-bottom:1px}.TPurse_rateKey{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary);font-family:var(--dsw-font-markdown-code-font-family);font-size:10px}.TPurse_rateFieldLabel{color:var(--dsw-alias-label-secondary);font-size:9px;text-align:center;overflow:hidden;white-space:nowrap}.TPurse_trigger{display:inline-flex;align-items:center;gap:3px;height:28px;min-height:24px;padding:0 8px;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px;cursor:pointer;font-variant-numeric:tabular-nums;transition:background-color .14s ease,color .14s ease}" +
+  ".TPurse_srOnly{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.TPurse_jsonToggle{margin-top:8px}.TPurse_rateTable{display:flex;flex-direction:column;gap:6px;margin-top:8px}.TPurse_rateRow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;align-items:center}.TPurse_rateHead{margin-bottom:1px}.TPurse_rateKey{grid-column:1/-1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary);font-family:var(--dsw-font-markdown-code-font-family);font-size:10px}.TPurse_rateFieldLabel{min-width:0;color:var(--dsw-alias-label-secondary);font-size:9px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.TPurse_rateTable .TPurse_rateInput{width:100%;min-width:0;text-align:right}.TPurse_trigger{display:inline-flex;align-items:center;gap:3px;height:28px;min-height:24px;padding:0 8px;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px;cursor:pointer;font-variant-numeric:tabular-nums;transition:background-color .14s ease,color .14s ease}" +
   ".TPurse_trigger:hover,.TPurse_trigger:focus-visible{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}" +
   ".TPurse_approx{opacity:.75}" +
   ".TPurse_amount{font-weight:500;color:var(--dsw-alias-label-secondary)}" +
@@ -2312,7 +2312,6 @@ function TokenPurseView({ usage, selection, t, sessionId, project, sessionsById 
                       h(
                         "div",
                         { className: CSS.rateRow + " " + CSS.rateHead },
-                        h("span", { className: CSS.rateKey }, t("rates.tableHint")),
                         RATE_FIELDS.map((field) =>
                           h("span", { className: CSS.rateFieldLabel, key: field }, t("rates.field." + field))
                         )
@@ -2455,7 +2454,6 @@ const zh = {
   "bucket.cacheWrite": "缓存写入",
   "bucket.output": "输出",
   "rates.edit": "调整费率",
-  "rates.tableHint": "点数字即可改费率",
   "rates.field.input": "输入",
   "rates.field.cacheRead": "缓存读",
   "rates.field.cacheWrite": "缓存写",
@@ -2537,7 +2535,6 @@ const en = {
   "bucket.cacheWrite": "Cache write",
   "bucket.output": "Output",
   "rates.edit": "Edit rates",
-  "rates.tableHint": "Edit rates inline",
   "rates.field.input": "in",
   "rates.field.cacheRead": "c-read",
   "rates.field.cacheWrite": "c-write",

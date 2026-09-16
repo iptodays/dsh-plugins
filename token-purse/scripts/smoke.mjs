@@ -568,6 +568,17 @@ const usedCssNames = [...new Set([...cssSource.matchAll(/CSS\.([A-Za-z0-9_]+)/g)
 const mappedCssNames = new Set([...cssSource.matchAll(/^\s+([A-Za-z0-9_]+):\s*"TPurse_/gm)].map((m) => m[1]));
 const unmappedCssNames = usedCssNames.filter((key) => !mappedCssNames.has(key));
 check("every CSS.<name> reference has a class mapping", unmappedCssNames.length === 0, unmappedCssNames.join(", "));
+/* 费率表踩过一次：轨道是 52px、输入框却固定 76px，四个框互相重叠并溢出面板。 */
+const rateTableInputRule = /\.TPurse_rateTable \.TPurse_rateInput\{([^}]*)\}/.exec(cssSource);
+check(
+  "rate-table inputs are fluid inside their tracks",
+  rateTableInputRule !== null && rateTableInputRule[1].indexOf("width:100%") !== -1 && rateTableInputRule[1].indexOf("min-width:0") !== -1
+);
+check(
+  "rate rows are fluid and long model keys cannot push them out",
+  /\.TPurse_rateRow\{[^}]*grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/.test(cssSource) &&
+    /\.TPurse_rateKey\{[^}]*min-width:0/.test(cssSource)
+);
 check(
   "css ships entrance / reveal keyframes",
   ["@keyframes tp-panel-in", "@keyframes tp-panel-out", "@keyframes tp-rise", "@keyframes tp-draw", "@keyframes tp-grow", "@keyframes tp-fade"].every(
