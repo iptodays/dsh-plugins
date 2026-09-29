@@ -1,0 +1,16 @@
+# SessionReaper（会话清道夫）安装片段。
+#
+# 把下面这段合并进 $DSH_HOME/profiles/<profile>/cordis.patch.yml 的顶层数组即可。
+# 该行让 Loader 加载本包；本包是纯宿主插件（没有浏览器半边），不需要 client 声明。
+#
+# 前提：本包已装进该 profile（dsh plugin --profile <profile> add file:<此目录>）。
+#
+# 默认值（30 天保留、每小时扫一次、每个项目至少留 2 个）都写在 src/core.js 里；
+# 想改就先跑一次 dry-run：把 dryRun 设成 true，看日志里的 [dry-run] 摘要。
+- insert:
+    - id: session-reaper
+      name: '@dsh-plugins/session-reaper'
+      # config:
+      #   retentionDays: 30
+      #   sweepIntervalMinutes: 60
+      #   dryRun: false

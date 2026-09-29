@@ -1,0 +1,39 @@
+{
+  "name": "@dsh-plugins/session-reaper",
+  "version": "0.1.0",
+  "description": "SessionReaper（会话清道夫）— 定期清理超过保留期的 DSH 会话日志与投影缓存，保护存活/置顶/自定义白名单会话。",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "session",
+    "retention",
+    "cleanup",
+    "garbage-collection"
+  ],
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "src",
+    "scripts",
+    "README.md",
+    "README.en.md",
+    "cordis.patch.yml",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "node --check src/core.js && node --check src/index.js && node --check lib/core.js && node --check lib/index.js && node --check scripts/build.mjs && node --check scripts/smoke.mjs",
+    "test": "node scripts/smoke.mjs"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.4"
+  }
+}
