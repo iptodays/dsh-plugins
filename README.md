@@ -16,7 +16,7 @@
 
 ## 安装
 
-完整说明见 [token-purse 的「安装」](./token-purse#安装)。摘要：
+完整说明见各插件的「安装」（[token-purse](./token-purse#安装) / [session-reaper](./session-reaper#安装)）。摘要以 token-purse 为例：
 
     # 从 GitHub 装（推荐）。仓库根不是包，path: 不能省；# 和 & 记得整体加引号，
     # committish 必须是完整的 40 位 SHA（短 SHA 会被当成 ref 名而解析失败）
@@ -33,11 +33,11 @@ live，改完 patch 会自动重载；浏览器刷新一次，随便发一条消
 
 各插件自带零依赖的构建与冒烟测试，在插件目录里跑：
 
-    npm run build     # 由 src/client.js 生成 lib/client.js
+    npm run build     # 由 src/ 生成 lib/ 产物
     npm run check     # 语法检查
     npm test          # 冒烟测试
 
-改完 `src/client.js` 记得 `npm run build`，并把 `lib/client.js` 一起提交（它就是最终产物）。
+改完 `src/` 记得 `npm run build`，并把 `lib/` 一起提交（它就是最终产物）。
 
 ## License
 

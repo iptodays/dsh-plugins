@@ -256,6 +256,7 @@ try {
     }
   };
   const logs = [];
+  const provided = [];
   const makeCtx = (overrides = {}) => ({
     sessions: { list: () => [{ id: "session-live" }] },
     sessionPersistence: persistence,
@@ -278,6 +279,9 @@ try {
           ? { pinnedSessionIds: ["session-pin"], archivedSessionIds: [] }
           : undefined,
     set: () => {},
+    provide: (serviceName, value) => {
+      provided.push([serviceName, value]);
+    },
     ...overrides
   });
 
@@ -291,6 +295,10 @@ try {
     dryRun: false
   });
   check("apply exposes a sweep handle", typeof api.sweep === "function");
+  check(
+    "apply registers the sessionReaper service",
+    provided.length === 1 && provided[0][0] === "sessionReaper" && typeof provided[0][1].sweep === "function"
+  );
   const result = await api.sweep({ now: NOW });
   check("expired session deleted", !existsSync(dirOld) && result.deleted.some((entry) => entry.id === "session-old"));
   check("projection cache record deleted", cacheDeletes.includes("session-old"));
@@ -321,6 +329,35 @@ try {
   check(
     "dry-run reports but does not delete",
     dryResult.deleted.some((entry) => entry.id === "session-dry" && entry.dryRun === true) && existsSync(dirDry)
+  );
+
+  const fallbackRoot = join(tmp, "fallback-sessions");
+  const dirFallbackPinned = await seed(fallbackRoot, "--p--", "session-fpinned", 90);
+  const dirFallbackOld = await seed(fallbackRoot, "--p--", "session-fold", 90);
+  const fallbackCtx = makeCtx({
+    sessions: { list: () => [] },
+    sessionPersistence: {
+      list: async () => [
+        { header: { id: "session-fpinned", createdAt: NOW - 100 * DAY_MS, cwd: "/w/p" } },
+        { header: { id: "session-fold", createdAt: NOW - 100 * DAY_MS, cwd: "/w/p" } }
+      ],
+      open: async () => ({ close: async () => {} })
+    },
+    get: (serviceName) => {
+      if (serviceName !== "storageDomain") return undefined;
+      return {
+        get: (domainName) =>
+          domainName === "workspace"
+            ? { global: { get: () => ({ pinnedSessionIds: ["session-fpinned"], archivedSessionIds: [] }) } }
+            : undefined
+      };
+    }
+  });
+  const fallbackApi = apply(fallbackCtx, { enabled: true, runOnStart: false, retentionDays: 30, minRetainedPerProject: 0, sessionsRoot: fallbackRoot });
+  const fallbackResult = await fallbackApi.sweep({ now: NOW });
+  check(
+    "workspace-domain fallback protects pinned sessions",
+    existsSync(dirFallbackPinned) && !existsSync(dirFallbackOld) && fallbackResult.deleted.some((entry) => entry.id === "session-fold")
   );
 
   const disabled = apply(makeCtx(), { enabled: false });
