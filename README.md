@@ -16,18 +16,28 @@
 
 ## 安装
 
-完整说明见各插件的「安装」（[token-purse](./token-purse#安装) / [session-reaper](./session-reaper#安装)）。摘要以 token-purse 为例：
+各插件步骤相同，只是包名不同。下面用 `<profile>` 表示你实际在用的 profile
+（Web 版是 `web`，桌面 App 是 `desktop`）。单插件的更详细说明见各自的「安装」
+（[token-purse](./token-purse#安装) / [session-reaper](./session-reaper#安装)）。
 
-    # 从 GitHub 装（推荐）。仓库根不是包，path: 不能省；# 和 & 记得整体加引号，
-    # committish 必须是完整的 40 位 SHA（短 SHA 会被当成 ref 名而解析失败）
-    dsh plugin --profile web add "github:iptodays/dsh-plugins#<完整 SHA>&path:token-purse"
+```bash
+# 从 GitHub 装（推荐）。仓库根不是包，path: 不能省；# 和 & 记得整体加引号，
+# committish 必须是完整的 40 位 SHA（短 SHA 会被当成 ref 名而解析失败）
+dsh plugin --profile <profile> add "github:iptodays/dsh-plugins#<完整 SHA>&path:token-purse"
+dsh plugin --profile <profile> add "github:iptodays/dsh-plugins#<完整 SHA>&path:session-reaper"
 
-    # 改这个插件本身时，从本地目录装
-    dsh plugin --profile web add file:/path/to/dsh-plugins/token-purse
+# 改插件本身时，从本地目录装
+dsh plugin --profile <profile> add file:/path/to/dsh-plugins/token-purse
+dsh plugin --profile <profile> add file:/path/to/dsh-plugins/session-reaper
+```
 
-再把插件目录里的 **cordis.patch.yml** 内容并进
-`$DSH_HOME/profiles/web/cordis.patch.yml` 的顶层数组。该 profile 的 patchReload 是
-live，改完 patch 会自动重载；浏览器刷新一次，随便发一条消息即可看到底部统计行。
+再把对应插件目录里的 **cordis.patch.yml** 内容并进
+`$DSH_HOME/profiles/<profile>/cordis.patch.yml` 的顶层数组。该 profile 的 patchReload
+是 live，改完 patch 会自动重载：
+
+- **token-purse**（客户端插件）：浏览器刷新一次，随便发一条消息即可看到底部统计行。
+- **session-reaper**（宿主插件）：重载后开始计时（默认启动 90 秒后跑第一轮），
+  第一次建议先开 `dryRun: true`，看日志确认要删的正是你以为的那些再关掉。
 
 ## 开发
 
