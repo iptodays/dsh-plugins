@@ -1,9 +1,10 @@
 {
  "note": "由 scripts/refresh-theme-tokens.mjs 生成；主题升级后请重跑。values 只含可解析为纯色的 token。",
  "source": "/Users/a/.npm/_npx/1e7f6d9597241db0/node_modules/@deepseek-ai/dsh-client-ui-theme/lib/client.js",
- "count": 357,
+ "count": 395,
  "tokens": [
   "--dsw-alias-bg-base",
+  "--dsw-alias-bg-document-preview",
   "--dsw-alias-bg-layer-1",
   "--dsw-alias-bg-layer-2",
   "--dsw-alias-bg-layer-3",
@@ -42,6 +43,14 @@
   "--dsw-alias-button-tool-bar-fill",
   "--dsw-alias-button-tool-bar-fill-invisible",
   "--dsw-alias-button-tool-bar-hover",
+  "--dsw-alias-code-diff-added",
+  "--dsw-alias-code-diff-deleted",
+  "--dsw-alias-file-diff-added-bg",
+  "--dsw-alias-file-diff-added-gutter",
+  "--dsw-alias-file-diff-added-marker",
+  "--dsw-alias-file-diff-deleted-bg",
+  "--dsw-alias-file-diff-deleted-gutter",
+  "--dsw-alias-file-diff-deleted-marker",
   "--dsw-alias-interactive-bg-active",
   "--dsw-alias-interactive-bg-hover",
   "--dsw-alias-interactive-bg-hover-accent",
@@ -49,6 +58,7 @@
   "--dsw-alias-interactive-bg-hover-solid",
   "--dsw-alias-label-caption",
   "--dsw-alias-label-dimmed",
+  "--dsw-alias-label-document-preview",
   "--dsw-alias-label-primary",
   "--dsw-alias-label-primary-bluish",
   "--dsw-alias-label-primary-dimmed",
@@ -65,14 +75,22 @@
   "--dsw-alias-markdown-inline-code",
   "--dsw-alias-markdown-placeholder",
   "--dsw-alias-markdown-tag",
+  "--dsw-alias-menu-icon",
+  "--dsw-alias-onboarding-accent",
+  "--dsw-alias-onboarding-card-fill",
+  "--dsw-alias-onboarding-checkbox-border",
+  "--dsw-alias-onboarding-secondary-fill",
   "--dsw-alias-scrollbar-bg-l1",
   "--dsw-alias-scrollbar-bg-l2",
   "--dsw-alias-scrollbar-hover-l1",
   "--dsw-alias-scrollbar-hover-l2",
+  "--dsw-alias-settings-card-fill",
+  "--dsw-alias-settings-card-stroke",
   "--dsw-alias-state-business-primary",
   "--dsw-alias-state-business-tertiary",
   "--dsw-alias-state-error-primary",
   "--dsw-alias-state-error-secondary",
+  "--dsw-alias-state-idle-primary",
   "--dsw-alias-state-success-primary",
   "--dsw-alias-state-success-secondary",
   "--dsw-alias-state-success-tertiary",
@@ -81,13 +99,17 @@
   "--dsw-alias-state-warn-secondary",
   "--dsw-alias-state-warn-tertiary",
   "--dsw-alias-toast-bg",
+  "--dsw-alias-toast-label",
   "--dsw-alias-tooltip-bg",
+  "--dsw-alias-tooltip-key-bg",
   "--dsw-corner-shape",
   "--dsw-elevation-panel",
   "--dsw-elevation-prominent",
   "--dsw-elevation-soft",
   "--dsw-elevation-stroke",
   "--dsw-elevation-stroke-color",
+  "--dsw-focus-ring-color",
+  "--dsw-focus-ring-width",
   "--dsw-font-base-16",
   "--dsw-font-base-16-font-family",
   "--dsw-font-base-16-font-size",
@@ -101,6 +123,7 @@
   "--dsw-font-base-strong-16-font-weight",
   "--dsw-font-base-strong-16-line-height",
   "--dsw-font-family",
+  "--dsw-font-family-brand",
   "--dsw-font-l-20",
   "--dsw-font-l-20-font-family",
   "--dsw-font-l-20-font-size",
@@ -269,9 +292,20 @@
   "--dsw-font-xxxs-strong-11-font-style",
   "--dsw-font-xxxs-strong-11-font-weight",
   "--dsw-font-xxxs-strong-11-line-height",
+  "--dsw-gradient-onboarding-blue-stops",
+  "--dsw-gradient-onboarding-cyan-stops",
+  "--dsw-gradient-onboarding-violet-stops",
   "--dsw-linear-gradient-think",
   "--dsw-linear-think-select",
   "--dsw-mask-blur",
+  "--dsw-menu-backdrop-filter",
+  "--dsw-menu-surface-fill",
+  "--dsw-radius-lg",
+  "--dsw-radius-md",
+  "--dsw-radius-panel",
+  "--dsw-radius-sm",
+  "--dsw-radius-xl",
+  "--dsw-radius-xs",
   "--dsw-shadow-lv1",
   "--dsw-shadow-lv1-blur",
   "--dsw-shadow-lv2",
@@ -318,6 +352,8 @@
   "--dsw-static-green-100",
   "--dsw-static-green-400",
   "--dsw-static-green-500",
+  "--dsw-static-green-500-a08",
+  "--dsw-static-green-500-a12",
   "--dsw-static-green-900",
   "--dsw-static-neutral-00",
   "--dsw-static-neutral-100",
@@ -356,14 +392,20 @@
   "--dsw-static-neutral-bluish-950",
   "--dsw-static-red-100",
   "--dsw-static-red-400",
+  "--dsw-static-red-400-a12",
   "--dsw-static-red-50",
   "--dsw-static-red-500",
   "--dsw-static-red-600",
+  "--dsw-static-red-600-a08",
   "--dsw-static-red-900"
  ],
  "values": {
   "--dsw-alias-bg-base": {
    "light": "#ffffff",
+   "dark": "#151517"
+  },
+  "--dsw-alias-bg-document-preview": {
+   "light": "#ebeef2",
    "dark": "#151517"
   },
   "--dsw-alias-bg-layer-1": {
@@ -488,10 +530,10 @@
   },
   "--dsw-alias-button-info-fill": {
    "light": "#4176e6",
-   "dark": "#679efe"
+   "dark": "#7aaaff"
   },
   "--dsw-alias-button-info-hover": {
-   "light": "#679efe",
+   "light": "#7aaaff",
    "dark": "#4176e6"
   },
   "--dsw-alias-button-primary-dimmed": {
@@ -517,6 +559,38 @@
   "--dsw-alias-button-tool-bar-hover": {
    "light": "#54555799",
    "dark": "#54555799"
+  },
+  "--dsw-alias-code-diff-added": {
+   "light": "#22c55e14",
+   "dark": "#22c55e1f"
+  },
+  "--dsw-alias-code-diff-deleted": {
+   "light": "#ec131314",
+   "dark": "#f25a5a1f"
+  },
+  "--dsw-alias-file-diff-added-bg": {
+   "light": "#e6f4e7",
+   "dark": "#1f3124"
+  },
+  "--dsw-alias-file-diff-added-gutter": {
+   "light": "#edf7ed",
+   "dark": "#132016"
+  },
+  "--dsw-alias-file-diff-added-marker": {
+   "light": "#01a241",
+   "dark": "#41c977"
+  },
+  "--dsw-alias-file-diff-deleted-bg": {
+   "light": "#fce6e2",
+   "dark": "#3c1f1b"
+  },
+  "--dsw-alias-file-diff-deleted-gutter": {
+   "light": "#fdece9",
+   "dark": "#28130e"
+  },
+  "--dsw-alias-file-diff-deleted-marker": {
+   "light": "#ba2723",
+   "dark": "#fa423e"
   },
   "--dsw-alias-interactive-bg-active": {
    "light": "#2631481a",
@@ -545,6 +619,10 @@
   "--dsw-alias-label-dimmed": {
    "light": "#e1e5ee",
    "dark": "#43454a"
+  },
+  "--dsw-alias-label-document-preview": {
+   "light": "#61666b",
+   "dark": "#cfd3d6"
   },
   "--dsw-alias-label-primary": {
    "light": "#0f1115",
@@ -576,7 +654,7 @@
   },
   "--dsw-alias-link": {
    "light": "#4176e6",
-   "dark": "#679efe"
+   "dark": "#7aaaff"
   },
   "--dsw-alias-markdown-citation": {
    "light": "#ebeef2",
@@ -610,6 +688,10 @@
    "light": "#f1f3f5",
    "dark": "#2c2c2e"
   },
+  "--dsw-alias-menu-icon": {
+   "light": "#353638",
+   "dark": "#ebeef2"
+  },
   "--dsw-alias-scrollbar-bg-l1": {
    "light": "#e5e5e5",
    "dark": "#3c3c3d"
@@ -628,7 +710,7 @@
   },
   "--dsw-alias-state-business-primary": {
    "light": "#4176e6",
-   "dark": "#679efe"
+   "dark": "#7aaaff"
   },
   "--dsw-alias-state-business-tertiary": {
    "light": "#e4edfd",
@@ -641,6 +723,10 @@
   "--dsw-alias-state-error-secondary": {
    "light": "#f25a5a",
    "dark": "#f25a5a"
+  },
+  "--dsw-alias-state-idle-primary": {
+   "light": "#d4d4d4",
+   "dark": "#545557"
   },
   "--dsw-alias-state-success-primary": {
    "light": "#22c55e",
@@ -674,9 +760,17 @@
    "light": "#353638",
    "dark": "#43454a"
   },
+  "--dsw-alias-toast-label": {
+   "light": "#ffffff",
+   "dark": "#ffffff"
+  },
   "--dsw-alias-tooltip-bg": {
    "light": "#2c2c2e",
    "dark": "#43454a"
+  },
+  "--dsw-menu-surface-fill": {
+   "light": "#f8f9fa94",
+   "dark": "#43454a73"
   },
   "--dsw-specific-bubble": {
    "light": "#edf3fe",
@@ -695,8 +789,8 @@
    "dark": "#1b1b1c"
   },
   "--dsw-specific-menu": {
-   "light": "#ffffff",
-   "dark": "#353638"
+   "light": "#f8f9faf0",
+   "dark": "#303136f0"
   },
   "--dsw-specific-selector": {
    "light": "#f5f6f7",
@@ -803,8 +897,8 @@
    "dark": "#b7c8fe"
   },
   "--dsw-static-deepseek-400": {
-   "light": "#679efe",
-   "dark": "#679efe"
+   "light": "#7aaaff",
+   "dark": "#7aaaff"
   },
   "--dsw-static-deepseek-450": {
    "light": "#5686fe",
@@ -845,6 +939,14 @@
   "--dsw-static-green-500": {
    "light": "#22c55e",
    "dark": "#22c55e"
+  },
+  "--dsw-static-green-500-a08": {
+   "light": "#22c55e14",
+   "dark": "#22c55e14"
+  },
+  "--dsw-static-green-500-a12": {
+   "light": "#22c55e1f",
+   "dark": "#22c55e1f"
   },
   "--dsw-static-green-900": {
    "light": "#233c2c",
@@ -998,6 +1100,10 @@
    "light": "#f25a5a",
    "dark": "#f25a5a"
   },
+  "--dsw-static-red-400-a12": {
+   "light": "#f25a5a1f",
+   "dark": "#f25a5a1f"
+  },
   "--dsw-static-red-50": {
    "light": "#fef2f2",
    "dark": "#fef2f2"
@@ -1009,6 +1115,10 @@
   "--dsw-static-red-600": {
    "light": "#ec1313",
    "dark": "#ec1313"
+  },
+  "--dsw-static-red-600-a08": {
+   "light": "#ec131314",
+   "dark": "#ec131314"
   },
   "--dsw-static-red-900": {
    "light": "#570c0c",

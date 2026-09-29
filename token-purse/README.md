@@ -395,6 +395,15 @@ DeepSeek 官方（以及走官方渠道的 packyapi）目前都是：工作日 *
 
 ## 更新记录
 
+- **0.2.1**：修面板**背景**——面板用的是主题的「菜单材质」`--dsw-specific-menu`，它在真实主题里
+  **带 alpha**（浅色 `#f8f9faf0`，材质模式 `#f8f9fa94`），Host 自己每个拿它当底的面板
+  （ContextMeter / TodoPanel / QueueDock）都配了 `backdrop-filter:var(--dsw-menu-backdrop-filter)`
+  （`blur(40px) saturate(150%)`）。本插件只抄了底色、漏了模糊，于是背后聊天区的文字会从那几个
+  百分点的透明里透出来。现在面板、吸顶标题、两个提示条都补上高斯模糊，并加护栏：用这块底色的
+  class 必须声明 `backdrop-filter`。
+  顺带：`scripts/theme-tokens.json` 快照落后于当前主题（357 → 395 个 token），重新导出后
+  `--dsw-menu-backdrop-filter` 才在名单里——它此前把该 token 记成不透明的 `#ffffff`，
+  照快照看会误判成「不需要模糊」。
 - **0.2.0**：分时计价升级为**三层可继承的方案**；配置键迁移到 **dsh.token-purse.config.v3**
   （v2 / v1 读取时自动迁移）。
   - 方案形如 `{ "mode": "surcharge" | "discount", "multiplier": 标量或四个桶, "timezone"?, "windows"? }`，

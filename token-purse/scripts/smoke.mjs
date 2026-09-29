@@ -682,6 +682,21 @@ check(
   fluidBoxes.size > 0 && unbalancedBoxes.length === 0,
   unbalancedBoxes.join(", ")
 );
+/* 护栏：--dsw-specific-menu 在真实主题里是**带 alpha** 的（浅色 #f8f9faf0，材质模式
+   #f8f9fa94；深色 #303136f0 / #43454a73），而这个仓库的 theme-tokens.json 快照里
+   记的是不透明的 #ffffff / #353638，看快照会误判成「不用模糊」。
+   Host 自己每个拿它当底的面板（ContextMeter、TodoPanel、QueueDock）都配了
+   backdrop-filter:var(--dsw-menu-backdrop-filter)。只抄底色不抄模糊，聊天区的字就会
+   从剩下那几个百分点里透出来——这就是「背景色不对」的来源。 */
+const isMenuSurface = (body) => /(^|;)\s*background\s*:\s*var\(--dsw-specific-menu\)/.test(body);
+const menuSurfaces = classesWith(isMenuSurface);
+const blurredSurfaces = classesWith((body) => isMenuSurface(body) && body.indexOf("backdrop-filter") !== -1);
+const unblurredSurfaces = [...menuSurfaces].filter((cls) => !blurredSurfaces.has(cls));
+check(
+  "every menu-material surface also blurs its backdrop",
+  menuSurfaces.size > 0 && unblurredSurfaces.length === 0,
+  unblurredSurfaces.join(", ")
+);
 check(
   "css ships entrance / reveal keyframes",
   ["@keyframes tp-panel-in", "@keyframes tp-panel-out", "@keyframes tp-rise", "@keyframes tp-draw", "@keyframes tp-grow", "@keyframes tp-fade"].every(

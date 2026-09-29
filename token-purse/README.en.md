@@ -457,6 +457,16 @@ otherwise refresh the page.
 
 ## Changelog
 
+- **0.2.1**: fixed the panel **background**. The panel uses the theme's menu material
+  `--dsw-specific-menu`, which is **translucent** in the real theme (`#f8f9faf0` light, or
+  `#f8f9fa94` in material mode), and every host surface that fills with it (ContextMeter,
+  TodoPanel, QueueDock) also sets `backdrop-filter:var(--dsw-menu-backdrop-filter)`
+  (`blur(40px) saturate(150%)`). The plugin had copied the fill but not the blur, so text from the
+  chat behind it bled through the remaining few percent. The panel, its sticky header and both
+  tooltip chips now blur; a guard requires any class using that fill to declare `backdrop-filter`.
+  Also: the `scripts/theme-tokens.json` snapshot lagged the current theme (357 → 395 tokens), so
+  `--dsw-menu-backdrop-filter` was only in the list after re-exporting — and it recorded the token
+  as opaque `#ffffff`, which makes the blur look unnecessary.
 - **0.2.0**: peak pricing became a **three-layer, inheritable scheme**; the stored config moved to
   **dsh.token-purse.config.v3** (v2 and v1 migrate on read).
   - A scheme is `{ "mode": "surcharge" | "discount", "multiplier": <scalar or four buckets>,
